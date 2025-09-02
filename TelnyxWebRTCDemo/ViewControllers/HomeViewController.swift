@@ -4,7 +4,7 @@ import TelnyxRTC
 import UIKit
 
 class HomeViewController: UIViewController {
-    private var hostingController: UIHostingController<HomeView>?
+    private var hostingController: UIHostingController<MainTabView>?
     let sipCredentialsVC = SipCredentialsViewController()
 
     var viewModel = HomeViewModel()
@@ -70,14 +70,15 @@ class HomeViewController: UIViewController {
             onDTMF: { [weak self] key in
                 self?.appDelegate.currentCall?.dtmf(dtmf: key)
             },
-            onRedial: { [weak self] phoneNumber in
+            onRedial: { [weak self] (phoneNumber: String) in
                 self?.callViewModel.sipAddress = phoneNumber
                 self?.onCallButton()
             }
         )
 
-        let homeView = HomeView(
-            viewModel: viewModel,
+        let mainTabView = MainTabView(
+            homeViewModel: viewModel,
+            callViewModel: callViewModel,
             profileViewModel: profileViewModel,
             onConnect: { [weak self] in
                 self?.handleConnect()
@@ -88,10 +89,43 @@ class HomeViewController: UIViewController {
             onLongPressLogo: { [weak self] in
                 self?.showHiddenOptions()
             },
-            profileView: AnyView(profileView),
-            callView: AnyView(callView))
+            onStartCall: { [weak self] in
+                self?.onCallButton()
+            },
+            onEndCall: { [weak self] in
+                self?.onEndCallButton()
+            },
+            onRejectCall: { [weak self] in
+                self?.onRejectButton()
+            },
+            onAnswerCall: { [weak self] in
+                self?.onAnswerButton()
+            },
+            onMuteUnmuteSwitch: { [weak self] mute in
+                self?.onMuteUnmuteSwitch(mute: mute)
+            },
+            onToggleSpeaker: { [weak self] in
+                self?.onToggleSpeaker()
+            },
+            onHold: { [weak self] hold in
+                self?.onHoldUnholdSwitch(isOnHold: hold)
+            },
+            onDTMF: { [weak self] key in
+                self?.appDelegate.currentCall?.dtmf(dtmf: key)
+            },
+            onRedial: { [weak self] (phoneNumber: String) in
+                self?.callViewModel.sipAddress = phoneNumber
+                self?.onCallButton()
+            },
+            onAddProfile: { [weak self] in
+                self?.handleAddProfile()
+            },
+            onSwitchProfile: { [weak self] in
+                self?.handleSwitchProfile()
+            }
+        )
 
-        let hostingController = UIHostingController(rootView: homeView)
+        let hostingController = UIHostingController(rootView: mainTabView)
         self.hostingController = hostingController
 
         addChild(hostingController)

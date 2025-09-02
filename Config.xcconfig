@@ -7,5 +7,14 @@
 
 // Configuration settings file format documentation can be found at:
 // https://help.apple.com/xcode/#/dev745c5c974
+
 // For CI
 PHONE_NUMBER = $(PHONE_NUMBER_ENV)
+
+// WebRTC Environment Configuration
+// Set to "production" for live Telnyx servers or "development" for testing
+WEBRTC_ENVIRONMENT = production
+
+// Optional: Set a test phone number for pre-call diagnosis
+// Leave empty if not using this feature
+TEST_PHONE_NUMBER = +13467713998

@@ -2,7 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Push notifications disabled for free Apple Developer account testing -->
+	<!-- Uncomment the lines below when using paid Apple Developer Program:
 	<key>aps-environment</key>
 	<string>development</string>
+	-->
 </dict>
 </plist>

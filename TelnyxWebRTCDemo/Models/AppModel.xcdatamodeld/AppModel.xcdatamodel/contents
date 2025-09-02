@@ -4,11 +4,21 @@
         <attribute name="callerName" attributeType="String"/>
         <attribute name="callId" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="callStatus" optional="YES" attributeType="String"/>
+        <attribute name="contactId" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="direction" optional="YES" attributeType="String"/>
         <attribute name="duration" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="metadata" optional="YES" attributeType="String"/>
         <attribute name="phoneNumber" optional="YES" attributeType="String"/>
         <attribute name="profileId" attributeType="String"/>
         <attribute name="timestamp" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="contact" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Contact" inverseName="callHistory" inverseEntity="Contact"/>
+    </entity>
+    <entity name="Contact" representedClassName="Contact" syncable="YES" codeGenerationType="class">
+        <attribute name="contactId" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="createdDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="name" attributeType="String"/>
+        <attribute name="phoneNumber" attributeType="String"/>
+        <attribute name="profileImageData" optional="YES" attributeType="Binary"/>
+        <relationship name="callHistory" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="CallHistoryEntry" inverseName="contact" inverseEntity="CallHistoryEntry"/>
     </entity>
 </model>
