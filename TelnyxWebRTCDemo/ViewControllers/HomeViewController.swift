@@ -29,52 +29,15 @@ class HomeViewController: UIViewController {
 
         appDelegate.voipDelegate = self
         telnyxClient = self.appDelegate.telnyxClient
+        
+        // Set TxClient delegate to receive connection updates (implemented in VoIP extension)
+        telnyxClient?.delegate = self
 
         // Set the TxClient in the HomeViewModel for PreCall Diagnosis
         if let client = self.telnyxClient {
             self.viewModel.setTxClient(client)
         }
 
-        let profileView = ProfileView(
-            viewModel: profileViewModel,
-            onAddProfile: { [weak self] in
-                self?.handleAddProfile()
-            },
-            onSwitchProfile: { [weak self] in
-                self?.handleSwitchProfile()
-            })
-
-        let callView = CallView(
-            viewModel: callViewModel, isPhoneNumber: false,
-            onStartCall: { [weak self] in
-                self?.onCallButton()
-            },
-            onEndCall: { [weak self] in
-                self?.onEndCallButton()
-            },
-            onRejectCall: { [weak self] in
-                self?.onRejectButton()
-            },
-            onAnswerCall: { [weak self] in
-                self?.onAnswerButton()
-            },
-            onMuteUnmuteSwitch: { [weak self] mute in
-                self?.onMuteUnmuteSwitch(mute: mute)
-            },
-            onToggleSpeaker: { [weak self] in
-                self?.onToggleSpeaker()
-            },
-            onHold: { [weak self] hold in
-                self?.onHoldUnholdSwitch(isOnHold: hold)
-            },
-            onDTMF: { [weak self] key in
-                self?.appDelegate.currentCall?.dtmf(dtmf: key)
-            },
-            onRedial: { [weak self] (phoneNumber: String) in
-                self?.callViewModel.sipAddress = phoneNumber
-                self?.onCallButton()
-            }
-        )
 
         let mainTabView = MainTabView(
             homeViewModel: viewModel,
@@ -183,8 +146,8 @@ class HomeViewController: UIViewController {
         let deviceToken = userDefaults.getPushToken()
         if let selectedProfile = profileViewModel.selectedProfile {
             connectToTelnyx(sipCredential: selectedProfile, deviceToken: deviceToken)
-            CallHistoryManager.shared.setCurrentProfile(selectedProfile.username)
-            CallHistoryManager.shared.getCallHistory()
+// CallHistoryManager.shared.setCurrentProfile(selectedProfile.username)
+// CallHistoryManager.shared.getCallHistory()
         }
     }
 
@@ -307,14 +270,21 @@ extension HomeViewController {
 extension HomeViewController {
     private func connectToTelnyx(sipCredential: SipCredential,
                                  deviceToken: String?) {
+        print("🌟🌟🌟 CRITICAL: HomeViewController.connectToTelnyx() CALLED!")
+        print("🌟 CONNECT PATH: sipCredential.username: '\(sipCredential.username)'")
+        print("🌟 CONNECT PATH: Stack trace:")
+        Thread.callStackSymbols.forEach { print("  🌟 \($0)") }
+        
         guard let telnyxClient = telnyxClient else { return }
 
         if telnyxClient.isConnected() {
+            print("🌟 CONNECT PATH: Client already connected, disconnecting first")
             telnyxClient.disconnect()
             return
         }
 
         do {
+            print("🌟 CONNECT PATH: Setting isLoading = true")
             viewModel.isLoading = true
             // Update local credential
 
@@ -456,15 +426,94 @@ extension HomeViewController {
 
 extension HomeViewController {
     func onCallButton() {
+        NSLog("🟢 STEP 6: HomeViewController.onCallButton() called - Destination: [%@]", callViewModel.sipAddress)
+        
+        NSLog("🟢 STEP 7: Validating destination address - isEmpty: %@", callViewModel.sipAddress.isEmpty ? "true" : "false")
         guard !callViewModel.sipAddress.isEmpty else {
-            print("HomeViewController:: onCallButton() ERROR: destination number or SIP user should not be empty")
+            NSLog("🟢 STEP 7: FAILED - Destination address is empty")
             return
         }
-
+        
+        NSLog("🟢 STEP 8: Creating call UUID and consulting CallInterfaceRouter")
         let uuid = UUID()
-        let handle = "Telnyx"
-
-        appDelegate.executeStartCallAction(uuid: uuid, handle: handle)
+        let destination = callViewModel.sipAddress
+        
+        // 🔥 WHATSAPP-STYLE ROUTING DECISION 🔥
+        let shouldUseCallKit = CallInterfaceRouter.shared.shouldUseCallKit(
+            for: uuid, 
+            origin: .outgoing, 
+            destination: destination
+        )
+        
+        if shouldUseCallKit {
+            // Route through CallKit for native iOS experience
+            NSLog("🟢 STEP 9A: Router decision: CallKit - Using native iOS interface")
+            let handle = "Telnyx"
+            NSLog("🟢 STEP 10A: Calling AppDelegate.executeStartCallAction() with UUID: %@, handle: %@, destination: %@", uuid.uuidString, handle, destination)
+            appDelegate.executeStartCallAction(uuid: uuid, handle: handle, destination: destination)
+            NSLog("🟢 STEP 11A: CallKit routing completed")
+            
+        } else {
+            // Use app UI for rich features - direct TxClient call
+            NSLog("🟢 STEP 9B: Router decision: App UI - Using rich in-app interface")
+            startDirectAppCall(uuid: uuid, destination: destination)
+            NSLog("🟢 STEP 11B: App UI routing completed")
+        }
+    }
+    
+    /// Creates a direct call using TxClient without CallKit (for unlocked device rich UI)
+    private func startDirectAppCall(uuid: UUID, destination: String) {
+        NSLog("🟢 DIRECT CALL STEP 1: Creating direct TxClient call - bypassing CallKit")
+        
+        do {
+            guard let sipCred = SipCredentialsManager.shared.getSelectedCredential() else {
+                NSLog("🟢 DIRECT CALL STEP 1: FAILED - No SIP credentials found")
+                return
+            }
+            
+            NSLog("🟢 DIRECT CALL STEP 2: Creating TxClient.newCall() directly")
+            let headers = [
+                "X-direct-call": "app-ui",
+                "X-interface": "rich-features"
+            ]
+            
+            let call = try telnyxClient?.newCall(
+                callerName: sipCred.callerName ?? "",
+                callerNumber: sipCred.callerNumber ?? "",
+                destinationNumber: destination,
+                callId: uuid,
+                customHeaders: headers,
+                debug: true
+            )
+            
+            if let directCall = call {
+                NSLog("🟢 DIRECT CALL STEP 3: SUCCESS - Direct call created, updating app state")
+                
+                // Update app state for direct call
+                appDelegate.currentCall = directCall
+                appDelegate.isCallOutGoing = true
+                
+                // Update ViewModels for rich UI
+                DispatchQueue.main.async {
+                    self.callViewModel.currentCall = directCall
+                    self.callViewModel.callState = directCall.callState
+                    self.viewModel.callState = directCall.callState
+                }
+                
+                NSLog("🟢 DIRECT CALL STEP 4: App UI call initiated successfully")
+                
+            } else {
+                NSLog("🟢 DIRECT CALL STEP 3: FAILED - TxClient.newCall() returned nil")
+            }
+            
+        } catch let error {
+            NSLog("🟢 DIRECT CALL ERROR: %@", error.localizedDescription)
+            
+            // Fallback to CallKit on error
+            NSLog("🟢 DIRECT CALL FALLBACK: Falling back to CallKit due to error")
+            let handle = "Telnyx"
+            appDelegate.executeStartCallAction(uuid: uuid, handle: handle, destination: destination)
+        }
     }
 
     func onEndCallButton() {
@@ -500,4 +549,37 @@ extension HomeViewController {
             appDelegate.currentCall?.unhold()
         }
     }
+    
+    // MARK: - Call Transition Handling
+    
+    /// Shows transition indicator for switching from CallKit to app UI
+    /// - Parameter callId: UUID of the active call
+    func showCallTransitionToAppUI(for callId: UUID) {
+        NSLog("🔥 TRANSITION UI: HomeViewController showing transition indicator for call %@", callId.uuidString)
+        
+        DispatchQueue.main.async {
+            // Update UI to show that app can provide rich features
+            // This could be a banner, status indicator, or other UI element
+            
+            // For now, just ensure the call state is properly displayed
+            if let currentCall = self.appDelegate.currentCall,
+               currentCall.callInfo?.callId == callId {
+                
+                self.callViewModel.currentCall = currentCall
+                self.callViewModel.callState = currentCall.callState
+                self.viewModel.callState = currentCall.callState
+                
+                NSLog("🔥 TRANSITION UI: Updated call state in ViewModels for rich UI display")
+                
+                // You could add a visual indicator here like:
+                // - A green status bar (similar to WhatsApp)
+                // - A "Tap for advanced features" banner
+                // - An overlay with call quality metrics
+                
+            } else {
+                NSLog("🔥 TRANSITION UI: Warning - no matching current call found for transition")
+            }
+        }
+    }
 }
+

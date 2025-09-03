@@ -52,7 +52,7 @@ struct ProfessionalRecentsScreen: View {
             .alert("Clear Call History", isPresented: $showingClearAlert) {
                 Button("Cancel", role: .cancel) { }
                 Button("Clear All", role: .destructive) {
-                    database.clearCallHistory(for: CallHistoryManager.shared.currentProfileId)
+                    database.clearCallHistory(for: "default")
                 }
             } message: {
                 Text("This will permanently delete all call history for this profile.")
@@ -199,7 +199,7 @@ struct ProfessionalRecentsScreen: View {
     
     // MARK: - Helper Functions
     private func initFilteredHistory() {
-        database.fetchCallHistoryFiltered(by: CallHistoryManager.shared.currentProfileId)
+        database.fetchCallHistoryFiltered(by: "default")
     }
     
     private func reloadFilteredHistory() {
@@ -233,7 +233,7 @@ struct ProfessionalRecentsScreen: View {
             let entry = filteredHistory[index]
             database.deleteCallHistoryEntry(
                 callId: entry.callId ?? UUID(),
-                profileId: CallHistoryManager.shared.currentProfileId
+                profileId: "default"
             )
         }
     }

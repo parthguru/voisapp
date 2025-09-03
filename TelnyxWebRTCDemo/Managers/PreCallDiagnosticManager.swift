@@ -90,7 +90,7 @@ class PreCallDiagnosticManager: ObservableObject {
                                                  callId: callUUID,debug: true)
             
             // Only start CallKit after successful call creation
-            appDelegate.executeStartCallAction(uuid: callUUID, handle: "Pre-Call Diagnosis")
+            appDelegate.executeStartCallAction(uuid: callUUID, handle: "Pre-Call Diagnosis", destination: destinationNumber)
             
             // Update state to started
             updateState(.started)

@@ -2,31 +2,53 @@ import SwiftUI
 
 extension Color {
     
-    // MARK: - Professional Color System
+    // MARK: - Professional-Premium Compatibility Bridge
+    // These properties now redirect to Premium design system for unified experience
     
-    static let professionalPrimary = Color(hex: "#1A365D")        // Navy blue - headers, primary actions
-    static let professionalSuccess = Color(hex: "#00C853")        // Green - call/answer buttons
-    static let professionalAlert = Color(hex: "#D32F2F")          // Red - end call, critical actions
-    static let professionalWarning = Color(hex: "#FF8F00")        // Amber - hold, secondary alerts
+    static let professionalPrimary = Color.premiumColors.primary           // Unified primary blue
+    static let professionalSuccess = Color.premiumColors.successStart      // Premium success green
+    static let professionalAlert = Color.premiumColors.statusDisconnected  // Premium alert red  
+    static let professionalWarning = Color.premiumColors.statusWarning     // Premium warning amber
     
-    // MARK: - Background Colors
+    // MARK: - Background Colors (Premium Bridge)
     
-    static let professionalBackground = Color(hex: "#FAFAFA")     // Clean light background
-    static let professionalSurface = Color(hex: "#FFFFFF")       // Card/surface backgrounds
+    static let professionalBackground = Color.premiumColors.backgroundPrimary   // Premium background
+    static let professionalSurface = Color.premiumColors.backgroundTertiary     // Premium surface
     
-    // MARK: - Text Colors
+    // MARK: - Text Colors (Premium Bridge)
     
-    static let professionalTextPrimary = Color(hex: "#1D1D1D")   // Main text, high contrast
-    static let professionalTextSecondary = Color(hex: "#616161") // Supporting text
+    static let professionalTextPrimary = Color.premiumColors.textPrimary        // Premium text primary
+    static let professionalTextSecondary = Color.premiumColors.textSecondary    // Premium text secondary
     
-    // MARK: - Border and Divider Colors
+    // MARK: - Border and Divider Colors (Premium Bridge)
     
-    static let professionalBorder = Color(hex: "#E0E0E0")        // Subtle dividers
+    static let professionalBorder = Color.premiumColors.borderLight             // Premium border
     
-    // MARK: - Button Styles
+    // MARK: - Button Styles (Premium Bridge)
     
-    static let professionalButtonBackground = professionalSurface.opacity(0.9)
+    static let professionalButtonBackground = Color.premiumColors.surfaceElevated.opacity(0.9)
     static let professionalButtonShadow = Color.black.opacity(0.08)
+}
+
+// MARK: - ProfessionalColors Struct Bridge
+// Bridge struct for compatibility with ProfessionalColors.property syntax
+struct ProfessionalColors {
+    // Primary Colors (Premium Bridge)
+    static let professionalPrimary = Color.premiumColors.primary
+    static let professionalSuccess = Color.premiumColors.successStart  
+    static let professionalAlert = Color.premiumColors.statusDisconnected
+    static let professionalWarning = Color.premiumColors.statusWarning
+    
+    // Background Colors (Premium Bridge)
+    static let professionalBackground = Color.premiumColors.backgroundPrimary
+    static let professionalSurface = Color.premiumColors.backgroundTertiary
+    
+    // Text Colors (Premium Bridge)
+    static let professionalTextPrimary = Color.premiumColors.textPrimary
+    static let professionalTextSecondary = Color.premiumColors.textSecondary
+    
+    // Border Colors (Premium Bridge)
+    static let professionalBorder = Color.premiumColors.borderLight
 }
 
 // MARK: - Professional Button Styles

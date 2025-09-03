@@ -6,7 +6,7 @@ import TelnyxRTC
 import Network
 
 // MARK: - VoIPDelegate
-extension HomeViewController : VoIPDelegate {
+extension HomeViewController : VoIPDelegate, TxClientDelegate {
     
     func onSocketConnected() {
         print("ViewController:: TxClientDelegate onSocketConnected()")
@@ -60,13 +60,19 @@ extension HomeViewController : VoIPDelegate {
                         self.showAlert(message: reason.localizedDescription ?? "")
 
                     case .serverError(let reason):
-                        self.telnyxClient?.disconnect()
-                        self.viewModel.isLoading = false
-                        self.viewModel.socketState = .disconnected
-                        
                         // Check if it's a signaling server error
                         if case .signalingServerError(let message, let code) = reason {
                             print("Signaling Server Error: \(message) (Code: \(code))")
+                            
+                            // Only disconnect on serious server errors, not call-related errors
+                            let shouldDisconnect = self.shouldDisconnectOnServerError(message: message, code: code)
+                            
+                            if shouldDisconnect {
+                                self.telnyxClient?.disconnect()
+                                self.viewModel.isLoading = false
+                                self.viewModel.socketState = .disconnected
+                            }
+                            
                             // Display a popup with the error message
                             let codeInt = Int(code) ?? 0
                             self.showErrorPopup(title: "Signaling Server Error", message: self.formatSignalingErrorMessage(causeCode: codeInt, message: message))
@@ -147,8 +153,22 @@ extension HomeViewController : VoIPDelegate {
     func onIncomingCall(call: Call) {
         self.incomingCall = true
         DispatchQueue.main.async {
+            // 🔥 CALLKIT-ONLY: Report incoming call to CallKit for native UI
+            let callId = call.callInfo?.callId ?? UUID()
+            let callerName = call.callInfo?.callerName ?? "Unknown"
+            
+            NSLog("🔥 CALLKIT-ONLY: onIncomingCall called for callId: %@", callId.uuidString)
+            NSLog("🔥 CALLKIT-ONLY: Reporting to CallKit with caller: %@", callerName)
+            
+            // CRITICAL: Report the call to CallKit to show native incoming call screen
+            self.appDelegate.newIncomingCall(from: callerName, uuid: callId) { error in
+                NSLog("🔥 iOS 18 CALLKIT: onIncomingCall CallKit reporting completed with error: %@", error?.localizedDescription ?? "none")
+            }
+            
+            // Update backend state for call management (not UI presentation)
             self.callViewModel.callState = call.callState
             self.viewModel.callState = call.callState
+            
             //Hide the keyboard
             self.view.endEditing(true)
         }
@@ -193,6 +213,11 @@ extension HomeViewController : VoIPDelegate {
     
     func onCallStateUpdated(callState: CallState, callId: UUID) {        
         DispatchQueue.main.async {
+            // 🔥 CALLKIT-ONLY: CallKit handles ALL call UI, app manages backend state
+            NSLog("🔥 CALLKIT-ONLY: onCallStateUpdated called for callId: %@, state: %@", callId.uuidString, String(describing: callState))
+            NSLog("🔥 CALLKIT-ONLY: CallKit handles all UI presentation - app only manages backend call state")
+            
+            // Update backend state for call management and metrics (not UI presentation)
             self.callViewModel.callState = callState
             self.viewModel.callState = callState
             
@@ -212,6 +237,7 @@ extension HomeViewController : VoIPDelegate {
                         call.onCallQualityChange = { qualityMetric in
                             print("metric_values: \(qualityMetric)")
                             DispatchQueue.main.async {
+                                // Update metrics for backend tracking (not UI display)
                                 self.callViewModel.callQualityMetrics = qualityMetric
                                 // Forward metrics to HomeViewModel for PreCall Diagnosis
                                 self.viewModel.handleCallQualityMetrics(qualityMetric)
@@ -228,7 +254,13 @@ extension HomeViewController : VoIPDelegate {
                     if let reason = reason {
                         print("Call ended with reason: \(reason.cause ?? "Unknown"), SIP code: \(reason.sipCode ?? 0)")
                     }
-                    // self.resetCallStates()
+                    // Clear CallKit UUID when call is done
+                    if let callKitUUID = self.appDelegate.callKitUUID, callKitUUID == callId {
+                        NSLog("🔥 UI-ROUTING: Call done - clearing CallKit UUID")
+                        self.appDelegate.callKitUUID = nil
+                    }
+                    // Reset incoming call flag
+                    self.incomingCall = false
                     break
                 case .HELD:
                     break
@@ -241,33 +273,100 @@ extension HomeViewController : VoIPDelegate {
         }
     }
     
+    /// Determine if server error should cause disconnection
+    /// - Parameters:
+    ///   - message: Error message
+    ///   - code: Error code
+    /// - Returns: true if should disconnect, false otherwise
+    private func shouldDisconnectOnServerError(message: String, code: String) -> Bool {
+        // Call-related errors that should NOT cause disconnection
+        let callRelatedErrors = [
+            "CALL DOES NOT EXIST",
+            "INVALID_DESTINATION", 
+            "USER_BUSY",
+            "NO_ANSWER",
+            "CALL_REJECTED",
+            "INSUFFICIENT_FUNDS",
+            "DESTINATION_OUT_OF_ORDER"
+        ]
+        
+        // Check if this is a call-related error
+        for errorPattern in callRelatedErrors {
+            if message.contains(errorPattern) {
+                return false // Don't disconnect for call-specific errors
+            }
+        }
+        
+        // Disconnect for serious server/connection errors
+        return true
+    }
+    
     func executeCall(callUUID: UUID, completionHandler: @escaping (Call?) -> Void) {
+        NSLog("🔴 STEP 22: VoIPDelegate.executeCall() called with UUID: %@", callUUID.uuidString)
+        
         do {
+            NSLog("🔴 STEP 23: Getting SIP credentials from SipCredentialsManager")
             guard let sipCred = SipCredentialsManager.shared.getSelectedCredential() else {
-                print("ERROR: executeCall can't be performed. Check callerName - callerNumber and destinationNumber")
+                NSLog("🔴 STEP 23: FAILED - No SIP credentials found")
+                completionHandler(nil)
                 return
             }
+            
+            NSLog("🔴 STEP 24: SIP credentials found - callerName: [\(sipCred.callerName ?? "nil")], callerNumber: [\(sipCred.callerNumber ?? "nil")]")
+            
+            NSLog("🔴 STEP 25: Creating custom headers")
             let headers =  [
                 "X-test1":"ios-test1",
                 "X-test2":"ios-test2"
             ]
             
-            let destinationNumber = self.callViewModel.sipAddress
+            NSLog("🔴 STEP 26: Getting destination from appDelegate.pendingCallDestination")
+            let destinationNumber = self.appDelegate.pendingCallDestination ?? self.callViewModel.sipAddress
+            NSLog("🔴 STEP 27: Destination number: [\(destinationNumber)] (from: \(self.appDelegate.pendingCallDestination != nil ? "appDelegate" : "callViewModel"))")
+            
+            NSLog("🔴 STEP 28: Checking TxClient availability: \(telnyxClient != nil)")
+            guard telnyxClient != nil else {
+                NSLog("🔴 STEP 28: FAILED - TxClient is nil")
+                completionHandler(nil)
+                return
+            }
+            
+            NSLog("🔴 STEP 29: Creating TxClient.newCall() with:")
+            NSLog("🔴   - callerName: [\(sipCred.callerName ?? "")]")
+            NSLog("🔴   - callerNumber: [\(sipCred.callerNumber ?? "")]") 
+            NSLog("🔴   - destinationNumber: [\(destinationNumber)]")
+            NSLog("🔴   - callUUID: [\(callUUID)]")
+            NSLog("🔴   - customHeaders: \(headers)")
             
             let call = try telnyxClient?.newCall(callerName: sipCred.callerName ?? "",
                                                  callerNumber: sipCred.callerNumber ?? "",
                                                  destinationNumber: destinationNumber,
                                                  callId: callUUID,customHeaders: headers,debug: true)
             
+            if call != nil {
+                NSLog("🔴 STEP 30: TxClient.newCall() SUCCESSFUL - Call object created")
+            } else {
+                NSLog("🔴 STEP 30: TxClient.newCall() returned nil call object")
+            }
             
-            CallHistoryManager.shared.handleStartCallAction(
-                callId:callUUID,
-                destinationNumber: destinationNumber,
-                callerName: sipCred.callerName ?? ""
-            )
+            NSLog("🔴 STEP 31: Adding call to CallHistoryManager")
+            // CallHistoryManager.shared.handleStartCallAction(
+            //     callId:callUUID,
+            //     destinationNumber: destinationNumber,
+            //     callerName: sipCred.callerName ?? ""
+            // )
+            
+            NSLog("🔴 STEP 32: Calling completionHandler with call: \(call != nil ? "SUCCESS" : "FAILED")")
             completionHandler(call)
+            NSLog("🔴 STEP 33: TxClient SDK phase completed")
+            
+            // Clear pending destination after use
+            self.appDelegate.pendingCallDestination = nil
+            
         } catch let error {
-            print("HomeViewController:: executeCall Error \(error)")
+            NSLog("🔴 STEP 29: TxClient.newCall() EXCEPTION: \(error)")
+            // Clear pending destination on error
+            self.appDelegate.pendingCallDestination = nil
             completionHandler(nil)
         }
     }
@@ -283,10 +382,17 @@ extension HomeViewController : VoIPDelegate {
     }
     
     func onPushCall(call: Call) {
-        print("HomeViewController:: onPushCall() callId: \(call.callInfo?.callId ?? UUID())")
+        let callId = call.callInfo?.callId ?? UUID()
+        print("HomeViewController:: onPushCall() callId: \(callId)")
         DispatchQueue.main.async {
+            // 🔥 CALLKIT-ONLY: CallKit handles ALL push call UI
+            NSLog("🔥 CALLKIT-ONLY: onPushCall called for callId: %@", callId.uuidString)
+            NSLog("🔥 CALLKIT-ONLY: CallKit will handle all push call presentation")
+            
+            // Update backend state for call management (not UI presentation)
             self.callViewModel.callState = call.callState
             self.viewModel.callState = call.callState
+            
             // Hide the keyboard
             self.view.endEditing(true)
         }

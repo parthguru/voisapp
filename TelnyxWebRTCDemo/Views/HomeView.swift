@@ -87,6 +87,7 @@ struct HomeView: View {
     let onConnect: () -> Void
     let onDisconnect: () -> Void
     let onLongPressLogo: () -> Void
+    let onStartCall: () -> Void
     
     let profileView: AnyView
     let callView: AnyView
@@ -405,6 +406,7 @@ struct HomeView_Previews: PreviewProvider {
             onConnect: {},
             onDisconnect: {},
             onLongPressLogo: {},
+            onStartCall: {},
             profileView: AnyView(
                 ProfileView(
                     viewModel: ProfileViewModel(),
@@ -428,288 +430,7 @@ struct HomeView_Previews: PreviewProvider {
     }
 }
 
-// MARK: - Professional Interface Views
-// Temporarily added here for compilation - will be moved to separate files later
 
-struct MainTabView: View {
-    @ObservedObject var homeViewModel: HomeViewModel
-    @ObservedObject var callViewModel: CallViewModel
-    @ObservedObject var profileViewModel: ProfileViewModel
-    
-    @State private var selectedTab = 0
-    @State private var showingActiveCall = false
-    @State private var showingIncomingCall = false
-    
-    // Existing callback functions - preserved exactly as they were
-    let onConnect: () -> Void
-    let onDisconnect: () -> Void
-    let onLongPressLogo: () -> Void
-    let onStartCall: () -> Void
-    let onEndCall: () -> Void
-    let onRejectCall: () -> Void
-    let onAnswerCall: () -> Void
-    let onMuteUnmuteSwitch: (Bool) -> Void
-    let onToggleSpeaker: () -> Void
-    let onHold: (Bool) -> Void
-    let onDTMF: (String) -> Void
-    let onRedial: ((String) -> Void)?
-    let onAddProfile: () -> Void
-    let onSwitchProfile: () -> Void
-    
-    var body: some View {
-        ZStack {
-            Color.professionalBackground.ignoresSafeArea()
-            
-            TabView(selection: $selectedTab) {
-                // MARK: - Dialer Tab (Primary)
-                ProfessionalDialerScreen(
-                    callViewModel: callViewModel,
-                    homeViewModel: homeViewModel,
-                    onStartCall: {
-                        onStartCall()
-                        if callViewModel.callState != .NEW && callViewModel.callState != .DONE(reason: nil) {
-                            showingActiveCall = true
-                        }
-                    },
-                    onConnect: onConnect,
-                    onDisconnect: onDisconnect
-                )
-                .tabItem {
-                    Image(systemName: "phone.fill")
-                    Text("Keypad")
-                }
-                .tag(0)
-                
-                // MARK: - Recents Tab  
-                ProfessionalRecentsScreen(
-                    onRedial: { phoneNumber in
-                        callViewModel.sipAddress = phoneNumber
-                        onRedial?(phoneNumber)
-                        selectedTab = 0
-                    }
-                )
-                .tabItem {
-                    Image(systemName: "clock.fill")
-                    Text("Recents")
-                }
-                .tag(1)
-                
-                // MARK: - Contacts Tab
-                ProfessionalContactsScreen(
-                    onCall: { phoneNumber in
-                        callViewModel.sipAddress = phoneNumber
-                        onStartCall()
-                        // Show active call screen when call starts
-                        if callViewModel.callState != .NEW && callViewModel.callState != .DONE(reason: nil) {
-                            showingActiveCall = true
-                        }
-                    }
-                )
-                .tabItem {
-                    Image(systemName: "person.circle.fill")
-                    Text("Contacts")
-                }
-                .tag(2)
-                
-                // MARK: - Settings Tab
-                ProfessionalSettingsScreen(
-                    homeViewModel: homeViewModel,
-                    profileViewModel: profileViewModel,
-                    onConnect: onConnect,
-                    onDisconnect: onDisconnect,
-                    onLongPressLogo: onLongPressLogo,
-                    onAddProfile: onAddProfile,
-                    onSwitchProfile: onSwitchProfile
-                )
-                .tabItem {
-                    Image(systemName: "gearshape.fill")
-                    Text("Settings")
-                }
-                .tag(3)
-            }
-            .accentColor(.professionalPrimary)
-            .onReceive(callViewModel.$callState) { callState in
-                switch callState {
-                case .NEW:
-                    showingIncomingCall = true
-                    showingActiveCall = false
-                case .CONNECTING, .RINGING, .ACTIVE, .HELD, .RECONNECTING:
-                    showingIncomingCall = false
-                    showingActiveCall = true
-                case .DONE, .DROPPED:
-                    showingIncomingCall = false
-                    showingActiveCall = false
-                }
-            }
-        }
-        .fullScreenCover(isPresented: $showingActiveCall) {
-            ProfessionalActiveCallScreen(
-                callViewModel: callViewModel,
-                onEndCall: {
-                    onEndCall()
-                    showingActiveCall = false
-                },
-                onMuteUnmuteSwitch: onMuteUnmuteSwitch,
-                onToggleSpeaker: onToggleSpeaker,
-                onHold: onHold,
-                onDTMF: onDTMF
-            )
-        }
-        .fullScreenCover(isPresented: $showingIncomingCall) {
-            ProfessionalIncomingCallScreen(
-                callViewModel: callViewModel,
-                onAnswerCall: {
-                    onAnswerCall()
-                    showingIncomingCall = false
-                    showingActiveCall = true
-                },
-                onRejectCall: {
-                    onRejectCall()
-                    showingIncomingCall = false
-                }
-            )
-        }
-    }
-}
-
-// MARK: - Professional Dialer Screen
-struct ProfessionalDialerScreen: View {
-    @ObservedObject var callViewModel: CallViewModel
-    @ObservedObject var homeViewModel: HomeViewModel
-    
-    let onStartCall: () -> Void
-    let onConnect: () -> Void
-    let onDisconnect: () -> Void
-    
-    private let keypadButtons = [
-        ["1", "2", "3"],
-        ["4", "5", "6"], 
-        ["7", "8", "9"],
-        ["*", "0", "#"]
-    ]
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Header with connection status
-            HStack {
-                Circle()
-                    .fill(homeViewModel.socketState == .clientReady ? ProfessionalColors.professionalSuccess : ProfessionalColors.professionalAlert)
-                    .frame(width: 8, height: 8)
-                
-                Text(homeViewModel.socketState == .clientReady ? "Connected" : "Disconnected")
-                    .font(.caption)
-                    .foregroundColor(ProfessionalColors.textSecondary)
-                
-                Spacer()
-                
-                if homeViewModel.socketState == .disconnected {
-                    Button("Connect") {
-                        onConnect()
-                    }
-                    .font(.caption)
-                    .foregroundColor(ProfessionalColors.professionalPrimary)
-                } else {
-                    Button("Disconnect") {
-                        onDisconnect()
-                    }
-                    .font(.caption)
-                    .foregroundColor(ProfessionalColors.professionalAlert)
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top)
-            
-            Spacer()
-            
-            // Number display
-            VStack(spacing: 8) {
-                HStack {
-                    Spacer()
-                    Text(callViewModel.sipAddress.isEmpty ? "Enter number" : callViewModel.sipAddress)
-                        .font(.system(size: 32, weight: .light, design: .default))
-                        .foregroundColor(callViewModel.sipAddress.isEmpty ? ProfessionalColors.textSecondary : ProfessionalColors.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                    
-                    if !callViewModel.sipAddress.isEmpty {
-                        Button(action: {
-                            if !callViewModel.sipAddress.isEmpty {
-                                callViewModel.sipAddress.removeLast()
-                            }
-                        }) {
-                            Image(systemName: "delete.left")
-                                .font(.title2)
-                                .foregroundColor(ProfessionalColors.textSecondary)
-                        }
-                        .padding(.leading, 8)
-                    }
-                }
-                .padding(.horizontal)
-                
-                Rectangle()
-                    .fill(ProfessionalColors.textSecondary.opacity(0.3))
-                    .frame(height: 1)
-                    .padding(.horizontal)
-            }
-            .padding(.vertical, 20)
-            
-            // Keypad
-            VStack(spacing: 15) {
-                ForEach(0..<keypadButtons.count, id: \.self) { row in
-                    HStack(spacing: 25) {
-                        ForEach(0..<keypadButtons[row].count, id: \.self) { col in
-                            KeypadButton(
-                                number: keypadButtons[row][col],
-                                onTap: {
-                                    callViewModel.sipAddress += keypadButtons[row][col]
-                                },
-                                onLongPress: keypadButtons[row][col] == "0" ? {
-                                    // Long press on 0 adds + for international dialing
-                                    callViewModel.sipAddress += "+"
-                                } : nil
-                            )
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 40)
-            
-            Spacer()
-            
-            // Call button
-            Button(action: {
-                if !callViewModel.sipAddress.isEmpty && (homeViewModel.socketState == .connected || homeViewModel.socketState == .clientReady) {
-                    onStartCall()
-                }
-            }) {
-                HStack {
-                    Image(systemName: "phone.fill")
-                        .font(.title2)
-                    Text("Call")
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 30)
-                        .fill(callViewModel.sipAddress.isEmpty ? ProfessionalColors.textSecondary : ProfessionalColors.professionalSuccess)
-                )
-            }
-            .disabled(callViewModel.sipAddress.isEmpty || !(homeViewModel.socketState == .connected || homeViewModel.socketState == .clientReady))
-            .opacity((callViewModel.sipAddress.isEmpty || !(homeViewModel.socketState == .connected || homeViewModel.socketState == .clientReady)) ? 0.6 : 1.0)
-            .padding(.horizontal, 40)
-            .padding(.bottom, 40)
-        }
-        .background(ProfessionalColors.professionalBackground.ignoresSafeArea())
-        .onAppear {
-            if homeViewModel.socketState == .disconnected {
-                onConnect()
-            }
-        }
-    }
-}
 
 // MARK: - Keypad Button Component
 struct KeypadButton: View {
@@ -784,294 +505,16 @@ struct KeypadButton: View {
     }
 }
 
-// MARK: - Professional Call Interface
-struct ProfessionalActiveCallScreen: View {
-    @ObservedObject var callViewModel: CallViewModel
-    let onEndCall: () -> Void
-    let onMuteUnmuteSwitch: (Bool) -> Void
-    let onToggleSpeaker: () -> Void
-    let onHold: (Bool) -> Void
-    let onDTMF: (String) -> Void
+struct CallQualityIndicator: Equatable {
+    let barCount: Int
+    let color: Color
+    let text: String
     
-    @State private var callDuration: TimeInterval = 0
-    @State private var timer: Timer?
-    @State private var callStartTime = Date()
-    @State private var showingKeypad = false
-    @State private var callQuality: CallQualityIndicator = .excellent
-    
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Professional gradient background
-                LinearGradient(
-                    colors: [
-                        Color(hex: "#F8F9FA"),
-                        Color(hex: "#FFFFFF")
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
-                
-                VStack(spacing: 0) {
-                    // Status and Call Quality Section
-                    VStack(spacing: 8) {
-                        HStack {
-                            // Call status
-                            Text(callStatusText)
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(ProfessionalColors.textSecondary)
-                            
-                            Spacer()
-                            
-                            // Call quality indicator
-                            CallQualityIndicatorView(quality: callQuality)
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.top, 60)
-                        
-                        // Call duration
-                        Text(formatCallDuration(callDuration))
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(ProfessionalColors.professionalPrimary)
-                            .padding(.top, 4)
-                    }
-                    
-                    Spacer()
-                    
-                    // Contact Information Section
-                    VStack(spacing: 16) {
-                        // Contact Avatar
-                        ContactAvatarLarge(
-                            name: extractDisplayName(from: callViewModel.sipAddress),
-                            phoneNumber: callViewModel.sipAddress
-                        )
-                        
-                        // Contact Name
-                        Text(extractDisplayName(from: callViewModel.sipAddress))
-                            .font(.system(size: 32, weight: .medium))
-                            .foregroundColor(ProfessionalColors.textPrimary)
-                            .multilineTextAlignment(.center)
-                        
-                        // Phone Number
-                        Text(extractPhoneNumber(from: callViewModel.sipAddress))
-                            .font(.system(size: 18, weight: .regular))
-                            .foregroundColor(ProfessionalColors.textSecondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    
-                    Spacer()
-                    
-                    // Call Controls Section
-                    VStack(spacing: 32) {
-                        // First row of controls
-                        HStack(spacing: 60) {
-                            CallControlButton(
-                                icon: showingKeypad ? "keyboard.fill" : "keyboard",
-                                title: "Keypad",
-                                isActive: showingKeypad,
-                                action: { showingKeypad.toggle() }
-                            )
-                            
-                            CallControlButton(
-                                icon: callViewModel.isMuted ? "mic.slash.fill" : "mic.fill",
-                                title: "Mute",
-                                isActive: callViewModel.isMuted,
-                                action: {
-                                    callViewModel.isMuted.toggle()
-                                    onMuteUnmuteSwitch(callViewModel.isMuted)
-                                    let impact = UIImpactFeedbackGenerator(style: .medium)
-                                    impact.impactOccurred()
-                                }
-                            )
-                            
-                            CallControlButton(
-                                icon: callViewModel.isSpeakerOn ? "speaker.wave.3.fill" : "speaker.fill",
-                                title: "Speaker",
-                                isActive: callViewModel.isSpeakerOn,
-                                action: {
-                                    callViewModel.isSpeakerOn.toggle()
-                                    onToggleSpeaker()
-                                    let impact = UIImpactFeedbackGenerator(style: .medium)
-                                    impact.impactOccurred()
-                                }
-                            )
-                        }
-                        
-                        // Second row of controls
-                        HStack(spacing: 60) {
-                            CallControlButton(
-                                icon: "plus",
-                                title: "Add Call",
-                                isActive: false,
-                                action: {
-                                    // Add call functionality
-                                    let impact = UIImpactFeedbackGenerator(style: .light)
-                                    impact.impactOccurred()
-                                }
-                            )
-                            
-                            CallControlButton(
-                                icon: "person.fill",
-                                title: "Contacts",
-                                isActive: false,
-                                action: {
-                                    // Contacts functionality
-                                    let impact = UIImpactFeedbackGenerator(style: .light)
-                                    impact.impactOccurred()
-                                }
-                            )
-                            
-                            CallControlButton(
-                                icon: "ellipsis",
-                                title: "More",
-                                isActive: false,
-                                action: {
-                                    // More options
-                                    let impact = UIImpactFeedbackGenerator(style: .light)
-                                    impact.impactOccurred()
-                                }
-                            )
-                        }
-                        
-                        // End Call Button
-                        Button(action: {
-                            onEndCall()
-                            let impact = UIImpactFeedbackGenerator(style: .heavy)
-                            impact.impactOccurred()
-                        }) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color(hex: "#FF3B30"))
-                                    .frame(width: 80, height: 80)
-                                    .shadow(color: Color(hex: "#FF3B30").opacity(0.3), radius: 8, x: 0, y: 4)
-                                
-                                Image(systemName: "phone.down.fill")
-                                    .font(.system(size: 32, weight: .medium))
-                                    .foregroundColor(.white)
-                            }
-                        }
-                        .scaleEffect(1.0)
-                        .animation(.easeInOut(duration: 0.15), value: true)
-                    }
-                    .padding(.bottom, 80)
-                }
-            }
-        }
-        .onAppear {
-            startCallTimer()
-            // Simulate call quality updates
-            simulateCallQuality()
-        }
-        .onDisappear {
-            timer?.invalidate()
-        }
-        .sheet(isPresented: $showingKeypad) {
-            ProfessionalCallKeypadSheet(onDTMF: onDTMF)
-        }
-    }
-    
-    // MARK: - Helper Properties and Functions
-    
-    private var callStatusText: String {
-        switch callViewModel.callState {
-        case .CONNECTING:
-            return "Connecting..."
-        case .RINGING:
-            return "Ringing..."
-        case .ACTIVE:
-            return "Connected"
-        case .HELD:
-            return "On Hold"
-        case .RECONNECTING:
-            return "Reconnecting..."
-        default:
-            return "Active"
-        }
-    }
-    
-    private func startCallTimer() {
-        callStartTime = Date()
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            callDuration = Date().timeIntervalSince(callStartTime)
-        }
-    }
-    
-    private func formatCallDuration(_ duration: TimeInterval) -> String {
-        let minutes = Int(duration) / 60
-        let seconds = Int(duration) % 60
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
-    
-    private func extractDisplayName(from sipAddress: String) -> String {
-        // Extract display name from SIP address or use phone number
-        let components = sipAddress.components(separatedBy: "@")
-        let userPart = components.first ?? sipAddress
-        
-        // Remove sip: prefix if present
-        let cleanUser = userPart.replacingOccurrences(of: "sip:", with: "")
-        
-        // If it looks like a phone number, try to format it nicely
-        if cleanUser.allSatisfy({ $0.isNumber || $0 == "+" }) {
-            return formatPhoneNumber(cleanUser)
-        }
-        
-        return cleanUser.isEmpty ? "Unknown" : cleanUser
-    }
-    
-    private func extractPhoneNumber(from sipAddress: String) -> String {
-        return sipAddress
-    }
-    
-    private func formatPhoneNumber(_ number: String) -> String {
-        // Basic phone number formatting
-        let digits = number.filter { $0.isNumber }
-        if digits.count == 10 {
-            return "(\(digits.prefix(3))) \(digits.dropFirst(3).prefix(3))-\(digits.suffix(4))"
-        }
-        return number
-    }
-    
-    private func simulateCallQuality() {
-        // Simulate real-time call quality updates
-        Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
-            let qualities: [CallQualityIndicator] = [.excellent, .good, .fair, .poor]
-            callQuality = qualities.randomElement() ?? .excellent
-        }
-    }
-}
-
-// MARK: - Supporting Components
-
-enum CallQualityIndicator: CaseIterable {
-    case excellent, good, fair, poor
-    
-    var color: Color {
-        switch self {
-        case .excellent: return Color(hex: "#00C853")
-        case .good: return Color(hex: "#64DD17") 
-        case .fair: return Color(hex: "#FF8F00")
-        case .poor: return Color(hex: "#D32F2F")
-        }
-    }
-    
-    var text: String {
-        switch self {
-        case .excellent: return "Excellent"
-        case .good: return "Good"
-        case .fair: return "Fair"
-        case .poor: return "Poor"
-        }
-    }
-    
-    var barCount: Int {
-        switch self {
-        case .excellent: return 4
-        case .good: return 3
-        case .fair: return 2
-        case .poor: return 1
-        }
-    }
+    static let excellent = CallQualityIndicator(barCount: 4, color: Color(hex: "#10B981"), text: "Excellent")
+    static let good = CallQualityIndicator(barCount: 3, color: Color(hex: "#10B981"), text: "Good") 
+    static let fair = CallQualityIndicator(barCount: 2, color: Color(hex: "#F59E0B"), text: "Fair")
+    static let poor = CallQualityIndicator(barCount: 1, color: Color(hex: "#EF4444"), text: "Poor")
+    static let none = CallQualityIndicator(barCount: 0, color: Color.gray, text: "No Signal")
 }
 
 struct CallQualityIndicatorView: View {
@@ -1306,7 +749,7 @@ struct ProfessionalRecentsScreen: View {
     let onRedial: (String) -> Void
     @State private var searchText = ""
     @StateObject private var callHistoryDB = CallHistoryDatabase.shared
-    @ObservedObject private var callHistoryManager = CallHistoryManager.shared
+// @ObservedObject private var callHistoryManager = CallHistoryManager.shared
     @ObservedObject private var contactsManager = SimpleContactsManager.shared
     // Real call history data from database
     private var callHistory: [CallHistoryItem] {
@@ -1457,7 +900,7 @@ struct ProfessionalRecentsScreen: View {
         .background(Color.white.ignoresSafeArea())
         .onAppear {
             // Load call history when screen appears
-            callHistoryDB.fetchCallHistoryFiltered(by: callHistoryManager.currentProfileId)
+            callHistoryDB.fetchCallHistoryFiltered(by: "default")
             
             // Populate contacts cache
             // TODO: Temporarily disabled
@@ -2449,6 +1892,1213 @@ struct ContactInfoCard: View {
                 .fill(ProfessionalColors.professionalSurface)
                 .shadow(color: ProfessionalColors.professionalBorder, radius: 1, x: 0, y: 1)
         )
+    }
+}
+
+// MARK: - MainTabView - Fixed compilation issue
+struct MainTabView: View {
+    @ObservedObject var homeViewModel: HomeViewModel
+    @ObservedObject var callViewModel: CallViewModel
+    @ObservedObject var profileViewModel: ProfileViewModel
+    
+    @State private var selectedTab = 0
+    @State private var showingActiveCall = false
+    @State private var showingIncomingCall = false
+    @State private var showingSettings = false
+    
+    // Existing callback functions - preserved exactly as they were
+    let onConnect: () -> Void
+    let onDisconnect: () -> Void
+    let onLongPressLogo: () -> Void
+    let onStartCall: () -> Void
+    let onEndCall: () -> Void
+    let onRejectCall: () -> Void
+    let onAnswerCall: () -> Void
+    let onMuteUnmuteSwitch: (Bool) -> Void
+    let onToggleSpeaker: () -> Void
+    let onHold: (Bool) -> Void
+    let onDTMF: (String) -> Void
+    let onRedial: ((String) -> Void)?
+    let onAddProfile: () -> Void
+    let onSwitchProfile: () -> Void
+    
+    var body: some View {
+        ZStack {
+            // Premium Background
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    Color(red: 0.98, green: 0.98, blue: 0.98),
+                    Color(red: 0.96, green: 0.96, blue: 0.96)
+                ]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            
+            TabView(selection: $selectedTab) {
+                // MARK: - Dialer Tab (Primary) - Premium Professional Design
+                PremiumGlassmorphismDialer(
+                    callViewModel: callViewModel,
+                    homeViewModel: homeViewModel,
+                    onStartCall: {
+                        NSLog("🔵 STEP 5.5: MainTabView - onStartCall triggered, invoking HomeViewController callback")
+                        onStartCall()
+                        // 🔥 CALLKIT-ONLY: CallKit handles all call presentation, no app UI needed
+                        NSLog("🔥 CALLKIT-ONLY: Call initiated, CallKit will handle all UI")
+                    },
+                    onConnect: {
+                        NSLog("🔵 UI: MainTabView - onConnect triggered")
+                        onConnect()
+                    },
+                    onDisconnect: onDisconnect
+                )
+                .tabItem {
+                    Image(systemName: "phone.fill")
+                    Text("Keypad")
+                }
+                .tag(0)
+                
+                // MARK: - Recents Tab  
+                PremiumGlassmorphismRecents(
+                    onRedial: { phoneNumber in
+                        callViewModel.sipAddress = phoneNumber
+                        onRedial?(phoneNumber)
+                        selectedTab = 0 // Switch back to dialer
+                    }
+                )
+                .tabItem {
+                    Image(systemName: "clock.fill")
+                    Text("Recents")
+                }
+                .tag(1)
+                
+                // MARK: - Contacts Tab
+                ProfessionalContactsScreen(
+                    onCall: { phoneNumber in
+                        callViewModel.sipAddress = phoneNumber
+                        onStartCall()
+                        // 🔥 CALLKIT-ONLY: CallKit handles all call presentation, no app UI needed
+                        NSLog("🔥 CALLKIT-ONLY: Call initiated from contacts, CallKit will handle all UI")
+                    }
+                )
+                .tabItem {
+                    Image(systemName: "person.circle.fill")
+                    Text("Contacts")
+                }
+                .tag(2)
+                
+                // MARK: - Settings Tab
+                ProfessionalSettingsScreen(
+                    homeViewModel: homeViewModel,
+                    profileViewModel: profileViewModel,
+                    onConnect: onConnect,
+                    onDisconnect: onDisconnect,
+                    onLongPressLogo: onLongPressLogo,
+                    onAddProfile: onAddProfile,
+                    onSwitchProfile: onSwitchProfile
+                )
+                .tabItem {
+                    Image(systemName: "gearshape.fill")
+                    Text("Settings")
+                }
+                .tag(3)
+            }
+            .accentColor(Color(red: 0.23, green: 0.51, blue: 0.96))
+            // 🔥 CALLKIT-ONLY: Custom call UI presentation disabled
+            // CallKit now handles ALL call presentation (incoming, outgoing, active calls)
+            // Custom app call screens are no longer shown automatically
+        }
+        // MARK: - 🔥 CALLKIT-ONLY: Custom Call Modals Disabled
+        // CallKit handles all call presentation - no custom call screens needed
+        /*
+        .fullScreenCover(isPresented: $showingActiveCall) {
+            CallView(
+                viewModel: callViewModel,
+                isPhoneNumber: true,
+                onStartCall: { /* Not used in active call */ },
+                onEndCall: {
+                    onEndCall()
+                    showingActiveCall = false
+                },
+                onRejectCall: { /* Not used in active call */ },
+                onAnswerCall: { /* Not used in active call */ },
+                onMuteUnmuteSwitch: onMuteUnmuteSwitch,
+                onToggleSpeaker: onToggleSpeaker,
+                onHold: onHold,
+                onDTMF: onDTMF,
+                onRedial: nil
+            )
+        }
+        .fullScreenCover(isPresented: $showingIncomingCall) {
+            ProfessionalIncomingCallScreen(
+                callViewModel: callViewModel,
+                onAnswerCall: {
+                    onAnswerCall()
+                    showingIncomingCall = false
+                    showingActiveCall = true
+                },
+                onRejectCall: {
+                    onRejectCall()
+                    showingIncomingCall = false
+                }
+            )
+        }
+        */
+    }
+}
+
+// MARK: - Premium Dialer View - Matching React Design
+struct PremiumDialerView: View {
+    @ObservedObject var callViewModel: CallViewModel
+    @ObservedObject var homeViewModel: HomeViewModel
+    @State private var phoneNumber: String = ""
+    
+    let onStartCall: () -> Void
+    let onConnect: () -> Void  
+    let onDisconnect: () -> Void
+    
+    private var isConnected: Bool {
+        homeViewModel.socketState == .connected || homeViewModel.socketState == .clientReady
+    }
+    
+    private var formattedNumber: String {
+        if phoneNumber.isEmpty {
+            return "Enter number"
+        }
+        return formatPhoneNumber(phoneNumber)
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Top padding
+            Spacer().frame(height: 60)
+            
+            // Connection Status
+            HStack {
+                Circle()
+                    .fill(isConnected ? Color.green : Color.red)
+                    .frame(width: 8, height: 8)
+                Text(isConnected ? "Connected" : "Disconnected")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.secondary)
+                Spacer()
+                if !isConnected {
+                    Button("Connect") {
+                        onConnect()
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color(red: 0.23, green: 0.51, blue: 0.96))
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
+                    )
+            )
+            .padding(.horizontal, 20)
+            .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 2)
+            
+            Spacer()
+            
+            // Phone Number Display
+            VStack(spacing: 16) {
+                Text(formattedNumber)
+                    .font(.system(size: 32, weight: .ultraLight, design: .default))
+                    .foregroundColor(phoneNumber.isEmpty ? .secondary : .primary)
+                    .tracking(phoneNumber.isEmpty ? 0.5 : 2.0)
+                    .frame(minHeight: 48)
+                    .animation(.easeInOut(duration: 0.3), value: phoneNumber.isEmpty)
+                
+                // Animated underline
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color(red: 0.23, green: 0.51, blue: 0.96),
+                                Color(red: 0.38, green: 0.65, blue: 0.98)
+                            ]),
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(height: 1)
+                    .frame(width: phoneNumber.isEmpty ? 0 : nil)
+                    .animation(.easeInOut(duration: 0.5), value: phoneNumber.isEmpty)
+                    .overlay(
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(height: 1)
+                            .opacity(phoneNumber.isEmpty ? 1 : 0)
+                            .animation(.easeInOut(duration: 0.3), value: phoneNumber.isEmpty)
+                    )
+            }
+            .padding(.horizontal, 32)
+            
+            Spacer()
+            
+            // Premium Keypad
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 20), count: 3), spacing: 20) {
+                ForEach(keypadButtons, id: \.key) { button in
+                    PremiumKeypadButtonView(
+                        key: button.key,
+                        letters: button.letters,
+                        onTap: { key in
+                            phoneNumber += key
+                            callViewModel.sipAddress = phoneNumber
+                        }
+                    )
+                }
+            }
+            .padding(.horizontal, 32)
+            
+            Spacer()
+            
+            // Call Button
+            Button(action: {
+                if !phoneNumber.isEmpty && isConnected {
+                    onStartCall()
+                }
+            }) {
+                HStack(spacing: 12) {
+                    Image(systemName: "phone.fill")
+                        .font(.system(size: 20, weight: .medium))
+                    Text("Call")
+                        .font(.system(size: 16, weight: .semibold))
+                        .tracking(0.5)
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(
+                    RoundedRectangle(cornerRadius: 28)
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    phoneNumber.isEmpty || !isConnected ? Color.gray.opacity(0.6) : Color(red: 0.065, green: 0.725, blue: 0.506),
+                                    phoneNumber.isEmpty || !isConnected ? Color.gray.opacity(0.4) : Color(red: 0.022, green: 0.588, blue: 0.408)
+                                ]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                )
+                .shadow(color: phoneNumber.isEmpty || !isConnected ? .clear : Color(red: 0.065, green: 0.725, blue: 0.506).opacity(0.3), radius: 8, x: 0, y: 4)
+            }
+            .disabled(phoneNumber.isEmpty || !isConnected)
+            .padding(.horizontal, 20)
+            .animation(.easeInOut(duration: 0.3), value: phoneNumber.isEmpty)
+            .animation(.easeInOut(duration: 0.3), value: isConnected)
+            
+            Spacer().frame(height: 40)
+        }
+    }
+    
+    private var keypadButtons: [KeypadButtonData] = [
+        KeypadButtonData(key: "1", letters: ""),
+        KeypadButtonData(key: "2", letters: "ABC"),
+        KeypadButtonData(key: "3", letters: "DEF"),
+        KeypadButtonData(key: "4", letters: "GHI"),
+        KeypadButtonData(key: "5", letters: "JKL"),
+        KeypadButtonData(key: "6", letters: "MNO"),
+        KeypadButtonData(key: "7", letters: "PQRS"),
+        KeypadButtonData(key: "8", letters: "TUV"),
+        KeypadButtonData(key: "9", letters: "WXYZ"),
+        KeypadButtonData(key: "*", letters: ""),
+        KeypadButtonData(key: "0", letters: "+"),
+        KeypadButtonData(key: "#", letters: "")
+    ]
+    
+    private func formatPhoneNumber(_ number: String) -> String {
+        let cleanNumber = number.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+        
+        switch cleanNumber.count {
+        case 0:
+            return ""
+        case 1...3:
+            return cleanNumber
+        case 4...6:
+            let area = String(cleanNumber.prefix(3))
+            let exchange = String(cleanNumber.dropFirst(3))
+            return "\(area) \(exchange)"
+        case 7...10:
+            let area = String(cleanNumber.prefix(3))
+            let exchange = String(cleanNumber.dropFirst(3).prefix(3))
+            let number = String(cleanNumber.dropFirst(6))
+            return "\(area) \(exchange) \(number)"
+        default:
+            let area = String(cleanNumber.prefix(3))
+            let exchange = String(cleanNumber.dropFirst(3).prefix(3))
+            let number = String(cleanNumber.dropFirst(6).prefix(4))
+            let remaining = String(cleanNumber.dropFirst(10))
+            return remaining.isEmpty ? "\(area) \(exchange) \(number)" : "\(area) \(exchange) \(number) \(remaining)"
+        }
+    }
+}
+
+struct KeypadButtonData {
+    let key: String
+    let letters: String
+}
+
+struct PremiumKeypadButtonView: View {
+    let key: String
+    let letters: String
+    let onTap: (String) -> Void
+    @State private var isPressed = false
+    
+    var body: some View {
+        Button(action: {
+            onTap(key)
+        }) {
+            ZStack {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        Circle()
+                            .fill(Color.white.opacity(0.6))
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(0.3), lineWidth: 0.5)
+                    )
+                    .frame(width: 80, height: 80)
+                    .shadow(color: .black.opacity(0.08), radius: 15, x: 0, y: 6)
+                    .shadow(color: .black.opacity(0.04), radius: 6, x: 0, y: 2)
+                
+                VStack(spacing: 2) {
+                    Text(key)
+                        .font(.system(size: 28, weight: .light))
+                        .foregroundColor(.primary)
+                    
+                    if !letters.isEmpty {
+                        Text(letters)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .tracking(1.5)
+                    }
+                }
+            }
+        }
+        .scaleEffect(isPressed ? 0.96 : 1.0)
+        .animation(.easeOut(duration: 0.1), value: isPressed)
+        .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
+            isPressed = pressing
+        }, perform: {})
+    }
+}
+
+// MARK: - Enhanced Premium Glassmorphism Dialer - Ultra Premium React Design
+struct PremiumGlassmorphismDialer: View {
+    @ObservedObject var callViewModel: CallViewModel
+    @ObservedObject var homeViewModel: HomeViewModel
+    @State private var phoneNumber: String = ""
+    @State private var animationOffset: CGFloat = 0
+    @State private var showingBackspace = false
+    
+    let onStartCall: () -> Void
+    let onConnect: () -> Void  
+    let onDisconnect: () -> Void
+    
+    init(callViewModel: CallViewModel, homeViewModel: HomeViewModel, onStartCall: @escaping () -> Void, onConnect: @escaping () -> Void, onDisconnect: @escaping () -> Void) {
+        NSLog("🔵 INIT: PremiumGlassmorphismDialer created with callbacks!")
+        self.callViewModel = callViewModel
+        self.homeViewModel = homeViewModel
+        self.onStartCall = onStartCall
+        self.onConnect = onConnect
+        self.onDisconnect = onDisconnect
+    }
+    
+    private var isConnected: Bool {
+        homeViewModel.socketState == .connected || homeViewModel.socketState == .clientReady
+    }
+    
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                // Enhanced Multi-Layer Background with Rich Colors for Superior Glassmorphism
+                // Layer 1: Rich gradient base
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color(red: 0.88, green: 0.92, blue: 0.98),
+                        Color(red: 0.85, green: 0.90, blue: 0.95),
+                        Color(red: 0.82, green: 0.88, blue: 0.94),
+                        Color(red: 0.90, green: 0.94, blue: 0.98)
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                // Layer 2: Animated mesh gradient
+                RadialGradient(
+                    gradient: Gradient(colors: [
+                        Color(red: 0.23, green: 0.51, blue: 0.96).opacity(0.08),
+                        Color(red: 0.38, green: 0.65, blue: 0.98).opacity(0.04),
+                        Color.clear
+                    ]),
+                    center: UnitPoint(x: 0.3 + animationOffset * 0.1, y: 0.2 + animationOffset * 0.1),
+                    startRadius: 50,
+                    endRadius: 400
+                )
+                .ignoresSafeArea()
+                
+                // Layer 3: Floating premium ambient shapes  
+                ForEach(0..<5, id: \.self) { index in
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                gradient: Gradient(colors: [
+                                    index % 2 == 0 ? 
+                                    Color(red: 0.23, green: 0.51, blue: 0.96).opacity(0.05) :
+                                    Color(red: 0.38, green: 0.65, blue: 0.98).opacity(0.03),
+                                    Color.clear
+                                ]),
+                                center: .center,
+                                startRadius: 30,
+                                endRadius: index == 0 ? 150 : index == 1 ? 200 : 180
+                            )
+                        )
+                        .frame(width: CGFloat(200 + index * 40), height: CGFloat(200 + index * 40))
+                        .offset(
+                            x: geometry.size.width * (index == 0 ? 0.1 : index == 1 ? 0.9 : index == 2 ? 0.5 : index == 3 ? 0.2 : 0.8) + animationOffset * CGFloat(index + 1) * 0.2,
+                            y: geometry.size.height * (index == 0 ? 0.2 : index == 1 ? 0.8 : index == 2 ? 0.4 : index == 3 ? 0.6 : 0.3) + animationOffset * CGFloat(index + 1) * 0.15
+                        )
+                        .opacity(0.6)
+                }
+                
+                VStack(spacing: 0) {
+                    // Compact top padding with safe area
+                    Spacer().frame(height: 20)
+                    
+                    // Enhanced Connection Status - Superior Glassmorphism Card
+                    if !isConnected {
+                        HStack {
+                            // Animated Status Indicator
+                            ZStack {
+                                Circle()
+                                    .fill(Color.red.opacity(0.3))
+                                    .frame(width: 12, height: 12)
+                                    .scaleEffect(1.2)
+                                    .opacity(0.8)
+                                
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 8, height: 8)
+                            }
+                            .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: isConnected)
+                            
+                            Text("Disconnected")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.secondary)
+                            
+                            Spacer()
+                            
+                            Button("Connect") {
+                                onConnect()
+                            }
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color(red: 0.23, green: 0.51, blue: 0.96))
+                                    .shadow(color: Color(red: 0.23, green: 0.51, blue: 0.96).opacity(0.3), radius: 8, x: 0, y: 4)
+                            )
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(.ultraThinMaterial)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20)
+                                        .stroke(
+                                            LinearGradient(
+                                                colors: [Color.white.opacity(0.6), Color.white.opacity(0.2)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            ),
+                                            lineWidth: 0.8
+                                        )
+                                )
+                        )
+                        .padding(.horizontal, 20)
+                        .shadow(color: .black.opacity(0.08), radius: 25, x: 0, y: 12)
+                        .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 4)
+                    }
+                    
+                    Spacer()
+                    
+                    // Enhanced Phone Number Display with Glassmorphism Container
+                    VStack(spacing: 24) {
+                        HStack {
+                            Text(phoneNumber.isEmpty ? "Enter phone number" : formatPhoneNumber(phoneNumber))
+                                .font(.system(size: 38, weight: .ultraLight, design: .default))
+                                .foregroundColor(phoneNumber.isEmpty ? .secondary : .primary)
+                                .tracking(phoneNumber.isEmpty ? 0.5 : 2.8)
+                                .frame(minHeight: 52)
+                                .animation(.easeInOut(duration: 0.3), value: phoneNumber.isEmpty)
+                                .monospacedDigit()
+                            
+                            // Animated Backspace Button
+                            if !phoneNumber.isEmpty {
+                                Button(action: {
+                                    withAnimation(.easeOut(duration: 0.2)) {
+                                        if !phoneNumber.isEmpty {
+                                            phoneNumber.removeLast()
+                                            callViewModel.sipAddress = phoneNumber
+                                        }
+                                    }
+                                }) {
+                                    Image(systemName: "delete.left.fill")
+                                        .font(.system(size: 20, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 40, height: 40)
+                                        .background(
+                                            Circle()
+                                                .fill(.ultraThinMaterial)
+                                                .overlay(
+                                                    Circle()
+                                                        .stroke(Color.white.opacity(0.3), lineWidth: 0.5)
+                                                )
+                                        )
+                                        .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 4)
+                                }
+                                .transition(.scale.combined(with: .opacity))
+                            }
+                        }
+                        
+                        // Enhanced Animated Gradient Underline
+                        Rectangle()
+                            .fill(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [
+                                        Color(red: 0.23, green: 0.51, blue: 0.96),
+                                        Color(red: 0.38, green: 0.65, blue: 0.98),
+                                        Color(red: 0.23, green: 0.51, blue: 0.96)
+                                    ]),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(height: 2)
+                            .frame(width: phoneNumber.isEmpty ? 0 : nil)
+                            .animation(.easeInOut(duration: 0.7), value: phoneNumber.isEmpty)
+                            .overlay(
+                                Rectangle()
+                                    .fill(Color.gray.opacity(0.2))
+                                    .frame(height: 1)
+                                    .opacity(phoneNumber.isEmpty ? 1 : 0)
+                                    .animation(.easeInOut(duration: 0.3), value: phoneNumber.isEmpty)
+                            )
+                    }
+                    .padding(.horizontal, 32)
+                    
+                    Spacer()
+                    
+                    // Enhanced Premium Glassmorphism Keypad
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 26), count: 3), spacing: 22) {
+                        ForEach(0..<12) { index in
+                            let keypadData = getKeypadData(for: index)
+                            
+                            ZStack {
+                                VStack(spacing: 5) {
+                                    Text(keypadData.key)
+                                        .font(.system(size: 34, weight: .light))
+                                        .foregroundColor(.primary)
+                                    
+                                    if !keypadData.letters.isEmpty {
+                                        Text(keypadData.letters)
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundColor(.secondary)
+                                            .tracking(1.4)
+                                    }
+                                }
+                                .frame(width: 78, height: 78)
+                                .background(
+                                    Circle()
+                                        .fill(.ultraThinMaterial)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(
+                                                    LinearGradient(
+                                                        colors: [Color.white.opacity(0.4), Color.white.opacity(0.1)],
+                                                        startPoint: .topLeading,
+                                                        endPoint: .bottomTrailing
+                                                    ),
+                                                    lineWidth: 0.8
+                                                )
+                                        )
+                                        .shadow(color: .black.opacity(0.06), radius: 15, x: 0, y: 8)
+                                        .shadow(color: .black.opacity(0.03), radius: 4, x: 0, y: 2)
+                                )
+                            }
+                            .scaleEffect(0.98)
+                            .onLongPressGesture(minimumDuration: 0.8) {
+                                if keypadData.key == "0" {
+                                    handleLongPress0()
+                                }
+                            }
+                            .onTapGesture {
+                                handleKeypadTap(key: keypadData.key)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    
+                    Spacer().frame(height: 35)
+                    
+                    // Enhanced Premium Call Button with Superior Glassmorphism
+                    Button(action: {
+                        NSLog("🔵 STEP 0: BUTTON TAP DETECTED! Call button pressed!")
+                        NSLog("🔵 STEP 0: Call button action block executed on thread: %@", Thread.current.description)
+                        NSLog("🔵 STEP 0: About to call handleCallAction()")
+                        handleCallAction()
+                        NSLog("🔵 STEP 0: Returned from handleCallAction() successfully")
+                    }) {
+                        HStack(spacing: 14) {
+                            Image(systemName: "phone.fill")
+                                .font(.system(size: 22, weight: .medium))
+                            Text("Call")
+                                .font(.system(size: 20, weight: .semibold))
+                                .tracking(1.0)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 60)
+                        .background(
+                            RoundedRectangle(cornerRadius: 30)
+                                .fill(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: [
+                                            phoneNumber.isEmpty || !isConnected ? Color.gray.opacity(0.4) : Color(red: 0.065, green: 0.725, blue: 0.506),
+                                            phoneNumber.isEmpty || !isConnected ? Color.gray.opacity(0.2) : Color(red: 0.022, green: 0.588, blue: 0.408),
+                                            phoneNumber.isEmpty || !isConnected ? Color.gray.opacity(0.3) : Color(red: 0.065, green: 0.725, blue: 0.506)
+                                        ]),
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 30)
+                                        .stroke(Color.white.opacity(0.3), lineWidth: 0.5)
+                                )
+                        )
+                        .shadow(
+                            color: phoneNumber.isEmpty || !isConnected ? .clear : Color(red: 0.065, green: 0.725, blue: 0.506).opacity(0.4),
+                            radius: 16,
+                            x: 0,
+                            y: 8
+                        )
+                        .shadow(
+                            color: phoneNumber.isEmpty || !isConnected ? .clear : Color(red: 0.065, green: 0.725, blue: 0.506).opacity(0.2),
+                            radius: 8,
+                            x: 0,
+                            y: 4
+                        )
+                    }
+                    .disabled(phoneNumber.isEmpty || !isConnected)
+                    .padding(.horizontal, 20)
+                    .animation(.easeInOut(duration: 0.3), value: phoneNumber.isEmpty)
+                    
+                    Spacer().frame(height: 50)
+                }
+            }
+        }
+        .onAppear {
+            phoneNumber = callViewModel.sipAddress
+            startBackgroundAnimation()
+        }
+    }
+    
+    // MARK: - Enhanced Helper Methods with VoIP Integration
+    
+    private func handleKeypadTap(key: String) {
+        print("🔢 KEYPAD TAP: Key '\(key)' pressed")
+        print("🔢 KEYPAD TAP: phoneNumber before: '\(phoneNumber)'")
+        withAnimation(.easeOut(duration: 0.2)) {
+            phoneNumber += key
+            callViewModel.sipAddress = phoneNumber
+            print("🔢 KEYPAD TAP: phoneNumber after: '\(phoneNumber)'")
+            print("🔢 KEYPAD TAP: callViewModel.sipAddress set to: '\(callViewModel.sipAddress)'")
+        }
+        
+        // Haptic feedback (if available)
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+    }
+    
+    private func handleLongPress0() {
+        withAnimation(.easeOut(duration: 0.2)) {
+            // Add + for international dialing
+            if phoneNumber.isEmpty {
+                phoneNumber = "+"
+            } else if phoneNumber.last == "0" {
+                phoneNumber.removeLast()
+                phoneNumber += "+"
+            } else {
+                phoneNumber += "+"
+            }
+            callViewModel.sipAddress = phoneNumber
+        }
+        
+        // Haptic feedback for long press
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+    }
+    
+    private func handleCallAction() {
+        NSLog("🔵 STEP 1: Call button tapped - Phone: [%@]", phoneNumber)
+        
+        NSLog("🔵 STEP 2: Validating call conditions - isEmpty: %@, isConnected: %@", phoneNumber.isEmpty ? "true" : "false", isConnected ? "true" : "false")
+        guard !phoneNumber.isEmpty && isConnected else {
+            NSLog("🔵 STEP 2: FAILED - Phone empty: %@ or not connected: %@", phoneNumber.isEmpty ? "true" : "false", isConnected ? "false" : "true")
+            return
+        }
+        
+        NSLog("🔵 STEP 3: Syncing with CallViewModel - setting sipAddress to: [%@]", phoneNumber)
+        callViewModel.sipAddress = phoneNumber
+        
+        NSLog("🔵 STEP 4: Calling onStartCall() callback to parent view")
+        onStartCall()
+        
+        // Success haptic feedback
+        let notificationFeedback = UINotificationFeedbackGenerator()
+        notificationFeedback.notificationOccurred(.success)
+        NSLog("🔵 STEP 5: UI phase completed successfully")
+    }
+    
+    private func startBackgroundAnimation() {
+        withAnimation(Animation.linear(duration: 25.0).repeatForever(autoreverses: true)) {
+            animationOffset = 1.0
+        }
+    }
+    
+    private func formatPhoneNumber(_ number: String) -> String {
+        // Handle international format with +
+        if number.hasPrefix("+") {
+            let cleanNumber = String(number.dropFirst()).components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+            return "+\(cleanNumber)"
+        }
+        
+        let cleanNumber = number.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+        
+        switch cleanNumber.count {
+        case 0:
+            return ""
+        case 1...3:
+            return cleanNumber
+        case 4...6:
+            let area = String(cleanNumber.prefix(3))
+            let exchange = String(cleanNumber.dropFirst(3))
+            return "(\(area)) \(exchange)"
+        case 7...10:
+            let area = String(cleanNumber.prefix(3))
+            let exchange = String(cleanNumber.dropFirst(3).prefix(3))
+            let number = String(cleanNumber.dropFirst(6))
+            return "(\(area)) \(exchange)-\(number)"
+        default:
+            // Handle longer international numbers
+            let area = String(cleanNumber.prefix(3))
+            let exchange = String(cleanNumber.dropFirst(3).prefix(3))
+            let number = String(cleanNumber.dropFirst(6).prefix(4))
+            let remaining = String(cleanNumber.dropFirst(10))
+            return remaining.isEmpty ? "(\(area)) \(exchange)-\(number)" : "(\(area)) \(exchange)-\(number) \(remaining)"
+        }
+    }
+    
+    private func getKeypadData(for index: Int) -> (key: String, letters: String) {
+        let keypadLayout = [
+            ("1", ""), ("2", "ABC"), ("3", "DEF"),
+            ("4", "GHI"), ("5", "JKL"), ("6", "MNO"),
+            ("7", "PQRS"), ("8", "TUV"), ("9", "WXYZ"),
+            ("*", ""), ("0", "+"), ("#", "")
+        ]
+        return keypadLayout[index]
+    }
+}
+
+// MARK: - Premium Glassmorphism Recents Screen - Optimized for Performance
+struct PremiumGlassmorphismRecents: View {
+    let onRedial: (String) -> Void
+    
+    @State private var searchText = ""
+    @State private var selectedCall: CallHistoryItem?
+    @StateObject private var callHistoryDB = CallHistoryDatabase.shared
+// @ObservedObject private var callHistoryManager = CallHistoryManager.shared
+    @ObservedObject private var contactsManager = SimpleContactsManager.shared
+    
+    // Real call history data from database
+    private var callHistory: [CallHistoryItem] {
+        return callHistoryDB.callHistory.map { entry in
+            let phoneNumber = entry.phoneNumber ?? "Unknown"
+            let name = contactsManager.getContactName(for: phoneNumber) ?? 
+                      (entry.callerName?.isEmpty == false ? entry.callerName! : "Unknown")
+            let isMissed = entry.callStatus == "missed" || entry.callStatus == "rejected"
+            let isIncoming = entry.direction == "incoming"
+            let avatar = String(name.prefix(1)).uppercased()
+            let avatarColor = generateAvatarColor(for: name)
+            let time = formatTime(from: entry.timestamp)
+            
+            return CallHistoryItem(
+                name: name,
+                phoneNumber: phoneNumber,
+                time: time,
+                timestamp: entry.timestamp ?? Date(),
+                isIncoming: isIncoming,
+                isMissed: isMissed,
+                avatar: avatar,
+                avatarColor: avatarColor
+            )
+        }.sorted { $0.timestamp > $1.timestamp }
+    }
+    
+    private var filteredCalls: [CallHistoryItem] {
+        if searchText.isEmpty {
+            return callHistory
+        }
+        return callHistory.filter { call in
+            call.name.lowercased().contains(searchText.lowercased()) ||
+            call.phoneNumber.contains(searchText)
+        }
+    }
+    
+    private var groupedCalls: [(String, [CallHistoryItem])] {
+        let grouped = Dictionary(grouping: filteredCalls) { call in
+            let calendar = Calendar.current
+            if calendar.isDateInToday(call.timestamp) {
+                return "Today"
+            } else if calendar.isDateInYesterday(call.timestamp) {
+                return "Yesterday" 
+            } else {
+                let formatter = DateFormatter()
+                formatter.dateStyle = .medium
+                return formatter.string(from: call.timestamp)
+            }
+        }
+        return grouped.sorted { (first, second) in
+            if first.key == "Today" { return true }
+            if second.key == "Today" { return false }
+            if first.key == "Yesterday" { return true }
+            if second.key == "Yesterday" { return false }
+            return first.key > second.key
+        }
+    }
+    
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                // Enhanced Multi-Layer Background matching keypad
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color(red: 0.88, green: 0.92, blue: 0.98),
+                        Color(red: 0.85, green: 0.90, blue: 0.95),
+                        Color(red: 0.82, green: 0.88, blue: 0.94),
+                        Color(red: 0.90, green: 0.94, blue: 0.98)
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                // Ambient floating shapes (reduced for performance)
+                ForEach(0..<3, id: \.self) { index in
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                gradient: Gradient(colors: [
+                                    index % 2 == 0 ? 
+                                    Color(red: 0.23, green: 0.51, blue: 0.96).opacity(0.04) :
+                                    Color(red: 0.38, green: 0.65, blue: 0.98).opacity(0.03),
+                                    Color.clear
+                                ]),
+                                center: .center,
+                                startRadius: 40,
+                                endRadius: index == 0 ? 180 : index == 1 ? 220 : 200
+                            )
+                        )
+                        .frame(width: CGFloat(180 + index * 30), height: CGFloat(180 + index * 30))
+                        .offset(
+                            x: geometry.size.width * (index == 0 ? 0.15 : index == 1 ? 0.85 : 0.5),
+                            y: geometry.size.height * (index == 0 ? 0.25 : index == 1 ? 0.75 : 0.4)
+                        )
+                        .opacity(0.7)
+                }
+                
+                VStack(spacing: 0) {
+                    // Compact top padding
+                    Spacer().frame(height: 20)
+                    
+                    // Optimized Search Bar (reduced prominence)
+                    searchBarSection
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 16)
+                    
+                    // Main Content
+                    if groupedCalls.isEmpty {
+                        emptyStateView
+                    } else {
+                        callHistoryContent
+                    }
+                }
+            }
+        }
+        .ignoresSafeArea(.all, edges: .top)
+    }
+    
+    // MARK: - Optimized Search Bar
+    private var searchBarSection: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.secondary)
+            
+            TextField("Search Contacts & Places", text: $searchText)
+                .font(.system(size: 16, weight: .regular))
+                .foregroundColor(.primary)
+            
+            if !searchText.isEmpty {
+                Button(action: { searchText = "" }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.white.opacity(0.3), lineWidth: 0.5)
+                )
+        )
+        .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 2)
+    }
+    
+    // MARK: - Call History Content with Performance Optimization
+    private var callHistoryContent: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVStack(spacing: 24) {
+                ForEach(groupedCalls.indices, id: \.self) { groupIndex in
+                    let group = groupedCalls[groupIndex]
+                    
+                    VStack(spacing: 16) {
+                        // Date Header
+                        HStack {
+                            Text(group.0)
+                                .font(.system(size: 20, weight: .semibold, design: .default))
+                                .foregroundColor(.primary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 20)
+                        
+                        // Glass Container for Calls (optimized shadows)
+                        VStack(spacing: 0) {
+                            ForEach(group.1.indices, id: \.self) { callIndex in
+                                let call = group.1[callIndex]
+                                callRowView(call: call, isLast: callIndex == group.1.count - 1)
+                            }
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 18)
+                                .fill(.ultraThinMaterial)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 18)
+                                        .stroke(Color.white.opacity(0.3), lineWidth: 0.5)
+                                )
+                        )
+                        .shadow(color: .black.opacity(0.04), radius: 12, x: 0, y: 4)
+                        .padding(.horizontal, 20)
+                    }
+                }
+                
+                Spacer().frame(height: 40)
+            }
+            .padding(.top, 8)
+        }
+    }
+    
+    // MARK: - Optimized Call Row (65px height for better density)
+    private func callRowView(call: CallHistoryItem, isLast: Bool) -> some View {
+        HStack(spacing: 14) {
+            // Avatar with Glass Effect
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [call.avatarColor, call.avatarColor.opacity(0.8)]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 44, height: 44)
+                    .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                
+                Text(call.avatar)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                
+                // Call Type Indicator
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 20, height: 20)
+                    .overlay(
+                        Image(systemName: getCallIcon(call: call))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(getCallIconColor(call: call))
+                    )
+                    .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+                    .offset(x: 16, y: 16)
+            }
+            
+            // Call Details (optimized spacing)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(call.name)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundColor(call.isMissed ? .red : .primary)
+                    .lineLimit(1)
+                
+                HStack(spacing: 4) {
+                    Text(getCallTypeText(call: call))
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(.secondary)
+                    
+                    Text("•")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(.secondary)
+                    
+                    Text("Mobile")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(.secondary)
+                }
+                
+                Text("Telnyx")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color(red: 0.23, green: 0.51, blue: 0.96))
+            }
+            
+            Spacer()
+            
+            // Time and Actions (optimized hierarchy)
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(call.time)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(.secondary)
+                
+                HStack(spacing: 8) {
+                    // Info button (ghost style)
+                    Button(action: { selectedCall = call }) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    // Call button (dominant hierarchy)
+                    Button(action: { onRedial(call.phoneNumber) }) {
+                        Image(systemName: "phone.fill")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            gradient: Gradient(colors: [
+                                                Color(red: 0.065, green: 0.725, blue: 0.506),
+                                                Color(red: 0.022, green: 0.588, blue: 0.408)
+                                            ]),
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                            )
+                    }
+                    .shadow(color: Color(red: 0.065, green: 0.725, blue: 0.506).opacity(0.3), radius: 6, x: 0, y: 3)
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .background(call.isMissed ? Color.red.opacity(0.02) : Color.clear)
+        .overlay(
+            Rectangle()
+                .fill(Color.white.opacity(0.2))
+                .frame(height: 0.5)
+                .opacity(isLast ? 0 : 1),
+            alignment: .bottom
+        )
+    }
+    
+    // MARK: - Empty State
+    private var emptyStateView: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            
+            Image(systemName: "clock")
+                .font(.system(size: 48, weight: .light))
+                .foregroundColor(.secondary.opacity(0.6))
+            
+            VStack(spacing: 8) {
+                Text("No Recent Calls")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundColor(.primary)
+                
+                Text("Your call history will appear here")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            Spacer()
+        }
+        .padding(.horizontal, 40)
+    }
+    
+    // MARK: - Helper Methods
+    private func generateAvatarColor(for name: String) -> Color {
+        let colors = [
+            Color(red: 0.23, green: 0.51, blue: 0.96), // Primary blue
+            Color(red: 0.38, green: 0.65, blue: 0.98), // Light blue
+            Color(red: 0.16, green: 0.50, blue: 0.73), // Dark blue
+            Color(red: 0.20, green: 0.78, blue: 0.65), // Teal
+            Color(red: 0.61, green: 0.35, blue: 0.71), // Purple
+            Color(red: 0.85, green: 0.34, blue: 0.61)  // Pink
+        ]
+        let hash = abs(name.hashValue)
+        return colors[hash % colors.count]
+    }
+    
+    private func formatTime(from date: Date?) -> String {
+        guard let date = date else { return "Unknown" }
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+    
+    private func getCallIcon(call: CallHistoryItem) -> String {
+        if call.isMissed { return "phone.down.fill" }
+        return call.isIncoming ? "phone.arrow.down.left.fill" : "phone.arrow.up.right.fill"
+    }
+    
+    private func getCallIconColor(call: CallHistoryItem) -> Color {
+        if call.isMissed { return .red }
+        return call.isIncoming ? .green : .blue
+    }
+    
+    private func getCallTypeText(call: CallHistoryItem) -> String {
+        if call.isMissed { return "Missed" }
+        return call.isIncoming ? "Incoming" : "Outgoing"
     }
 }
 

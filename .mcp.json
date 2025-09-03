@@ -1,13 +1,5 @@
 {
   "mcpServers": {
-    "ios-simulator": {
-      "command": "npx",
-      "args": ["-y", "ios-simulator-mcp"]
-    },
-    "dart": {
-      "command": "dart",
-      "args": ["run", "mcp"]
-    },
     "mcp-docker": {
       "command": "docker",
       "args": [

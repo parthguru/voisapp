@@ -137,7 +137,7 @@ extension AppDelegate: TxClientDelegate {
         }
         // Track call state changes in call history
         if let call = self.telnyxClient?.calls[callId] {
-            CallHistoryManager.shared.handleCallStateChange(call: call, previousState: nil)
+// CallHistoryManager.shared.handleCallStateChange(call: call, previousState: nil)
         }
         
         if case .DONE = callState {
