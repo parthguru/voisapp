@@ -15,33 +15,38 @@ extension Color {
     
     struct PremiumColors {
         // Primary Colors
-        let primary = Color(hex: "#3B82F6")
-        let primaryLight = Color(hex: "#60A5FA")
+        let primary = Color(hex: "#1A365D")        // Navy blue - consistent with professional theme
+        let primaryLight = Color(hex: "#3B82F6")    
         let primaryDark = Color(hex: "#1D4ED8")
         
-        // Success Gradient
-        let successStart = Color(hex: "#10B981")
-        let successMiddle = Color(hex: "#059669")
-        let successEnd = Color(hex: "#047857")
+        // Action Colors
+        let success = Color(hex: "#00C853")         // Green - call/answer buttons
+        let alert = Color(hex: "#D32F2F")           // Red - end call, critical actions
+        let warning = Color(hex: "#FF8F00")         // Amber - hold, secondary alerts
         
-        // Background System
-        let backgroundPrimary = Color(hex: "#FAFAFA")
-        let backgroundSecondary = Color(hex: "#F5F5F5")
-        let backgroundTertiary = Color(hex: "#FFFFFF")
+        // Background System - CONSISTENT ACROSS ALL SCREENS
+        let background = Color(.systemBackground)   // Clean system background
+        let backgroundSecondary = Color(.secondarySystemBackground)
+        let backgroundTertiary = Color(.tertiarySystemBackground)
         
         // Surface Colors
+        let surface = Color(.systemBackground)      // Card/surface backgrounds
         let surfaceElevated = Color.white.opacity(0.9)
         let surfaceGlass = Color.white.opacity(0.85)
         let surfacePressed = Color.gray.opacity(0.05)
         
         // Text Colors
-        let textPrimary = Color(hex: "#111827")
-        let textSecondary = Color(hex: "#6B7280")
+        let textPrimary = Color(hex: "#1D1D1D")     // Main text, high contrast
+        let textSecondary = Color(hex: "#616161")   // Supporting text
         let textTertiary = Color(hex: "#9CA3AF")
         
         // Border Colors
+        let border = Color(hex: "#E0E0E0")          // Subtle dividers
         let borderLight = Color(hex: "#E5E7EB").opacity(0.5)
         let borderActive = Color(hex: "#D1D5DB").opacity(0.7)
+        
+        // Button Colors
+        let keypadButton = Color(hex: "#F8F9FA")    // Light keypad button background
         
         // Status Colors
         let statusDisconnected = Color(hex: "#EF4444")
@@ -247,4 +252,140 @@ struct PhoneNumberFormatter {
         let cleanNumber = number.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
         return cleanNumber.count >= 10 && cleanNumber.count <= 15
     }
+}
+
+// MARK: - Premium Spacing System
+struct PremiumSpacing {
+    static let xs: CGFloat = 4
+    static let sm: CGFloat = 8
+    static let md: CGFloat = 16
+    static let lg: CGFloat = 20
+    static let xl: CGFloat = 24
+    static let xxl: CGFloat = 32
+    static let xxxl: CGFloat = 48
+}
+
+// MARK: - Premium Button Styles
+struct PremiumPrimaryButtonStyle: ButtonStyle {
+    let isDisabled: Bool
+    
+    init(isDisabled: Bool = false) {
+        self.isDisabled = isDisabled
+    }
+    
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.premiumFonts.bodyLarge)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundColor(.white)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 24)
+            .background(
+                RoundedRectangle(cornerRadius: 25)
+                    .fill(isDisabled ? Color.gray.opacity(0.5) : Color.premiumColors.primary)
+            )
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.premiumQuick, value: configuration.isPressed)
+    }
+}
+
+struct PremiumSecondaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.premiumFonts.bodyLarge)
+            .font(.system(size: 16, weight: .medium))
+            .foregroundColor(Color.premiumColors.primary)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 24)
+            .background(
+                RoundedRectangle(cornerRadius: 25)
+                    .stroke(Color.premiumColors.primary, lineWidth: 1)
+                    .background(
+                        RoundedRectangle(cornerRadius: 25)
+                            .fill(Color.clear)
+                    )
+            )
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.premiumQuick, value: configuration.isPressed)
+    }
+}
+
+// MARK: - Premium Card Style
+struct PremiumCardStyle: ViewModifier {
+    let padding: CGFloat
+    
+    init(padding: CGFloat = PremiumSpacing.md) {
+        self.padding = padding
+    }
+    
+    func body(content: Content) -> some View {
+        content
+            .padding(padding)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.premiumColors.surface)
+                    .shadow(
+                        color: Color.black.opacity(0.08),
+                        radius: 4,
+                        x: 0,
+                        y: 2
+                    )
+            )
+    }
+}
+
+// MARK: - Premium Screen Container
+struct PremiumScreenContainer<Content: View>: View {
+    let content: Content
+    let topPadding: CGFloat
+    
+    init(topPadding: CGFloat = PremiumSpacing.xxl, @ViewBuilder content: () -> Content) {
+        self.content = content()
+        self.topPadding = topPadding
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer().frame(height: topPadding)
+            content
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.premiumColors.background)
+    }
+}
+
+// MARK: - Extended View Modifiers
+extension View {
+    func premiumCardStyle(padding: CGFloat = PremiumSpacing.md) -> some View {
+        modifier(PremiumCardStyle(padding: padding))
+    }
+    
+    func premiumScreenContainer(topPadding: CGFloat = PremiumSpacing.xxl) -> some View {
+        PremiumScreenContainer(topPadding: topPadding) {
+            self
+        }
+    }
+    
+    func premiumPrimaryButtonStyle(isDisabled: Bool = false) -> some View {
+        self.buttonStyle(PremiumPrimaryButtonStyle(isDisabled: isDisabled))
+    }
+    
+    func premiumSecondaryButtonStyle() -> some View {
+        self.buttonStyle(PremiumSecondaryButtonStyle())
+    }
+}
+
+// MARK: - Legacy Color Support (for existing code compatibility)
+extension Color {
+    static let professionalPrimary = Color.premiumColors.primary
+    static let professionalSuccess = Color.premiumColors.success
+    static let professionalAlert = Color.premiumColors.alert
+    static let professionalWarning = Color.premiumColors.warning
+    static let professionalBackground = Color.premiumColors.background
+    static let professionalSurface = Color.premiumColors.surface
+    static let professionalTextPrimary = Color.premiumColors.textPrimary
+    static let professionalTextSecondary = Color.premiumColors.textSecondary
+    static let professionalBorder = Color.premiumColors.border
+    static let professionalButtonBackground = Color.premiumColors.surface.opacity(0.9)
+    static let professionalButtonShadow = Color.black.opacity(0.08)
 }
