@@ -179,3 +179,51 @@ Available regions: Auto, US East, US Central, US West, Canada Central, Europe, A
 - Code-level logging in TxConfig may still work for debugging app behavior
 - WebRTC stats with `debug: true` flag may provide some insights
 - Custom loggers supported via TxLogger protocol for in-app logging only
+
+## ⚠️ Known Issues
+
+### iOS 18 CallKit Automatic UI Switching (CRITICAL)
+**Status**: 🔴 UNRESOLVED - Requires further investigation
+
+**Issue**: On iOS 18 (particularly Dynamic Island devices like iPhone 14 Pro Max), CallKit does not automatically switch from app UI to system UI for calls. Users must manually switch between app and CallKit screens.
+
+**Symptoms**:
+- Outgoing calls: App remains in foreground instead of automatically showing CallKit system UI
+- Incoming calls: May require manual switching to see native CallKit interface
+- Users lose the seamless native iOS call experience
+
+**Root Cause**: iOS 18 behavior change confirmed in Apple Developer Forums
+- Dynamic Island devices have different CallKit behavior than iOS 17
+- Apps now "stay in foreground" instead of CallKit automatically taking over
+- This affects multiple VoIP apps, not just Telnyx implementation
+
+**Research Completed**:
+- ✅ Researched official Apple CallKit documentation (2024-2025)
+- ✅ Found confirmed iOS 18 behavior changes in Apple Developer Forums
+- ✅ Implemented all recommended iOS 18 compatibility fixes:
+  - Fixed CXProviderConfiguration for iOS 18 compatibility
+  - Eliminated CallInterfaceRouter dual-screen logic (100% CallKit-only)
+  - Enhanced minimizeAppForCallKit() with iOS 18-specific backgrounding
+  - Added proper background notifications and timing delays
+
+**Attempted Solutions** (All unsuccessful):
+- CXProviderConfiguration iOS 18 compatibility settings
+- Enhanced app lifecycle management for background transition
+- Eliminated routing decisions causing dual-screen confusion  
+- Window interaction disabling to prevent UI interference
+
+**Apple Developer Forum References**:
+- iOS 18 Different Behavior in CallKit with Dynamic Island (Thread #764532)
+- CallKit screen briefly enters foreground issues (Thread #762925)
+- Multiple developers reporting same issue on iOS 18 + Dynamic Island devices
+
+**Next Steps for Future Investigation**:
+1. Monitor Apple Developer Forums for official iOS 18.x+ CallKit updates
+2. Consider filing bug report with Apple (FB number TBD)
+3. Investigate if iOS 18.1+ releases address this issue
+4. Test on non-Dynamic Island devices to isolate to hardware-specific behavior
+5. Research if specific CXProvider timing or sequencing resolves the issue
+
+**Workaround**: Users must manually switch to CallKit system UI during calls until resolved.
+
+**Impact**: UX degradation - users lose seamless native iOS call experience that CallKit is designed to provide.

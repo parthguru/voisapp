@@ -32,6 +32,9 @@ struct ProfessionalRecentsScreen: View {
                 // MARK: - Header Section
                 headerSection
                 
+                // MARK: - DEBUG PANEL (Temporary)
+                debugPanel
+                
                 // MARK: - Search Section
                 searchSection
                 
@@ -81,8 +84,8 @@ struct ProfessionalRecentsScreen: View {
             .disabled(filteredHistory.isEmpty)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 10)
-        .padding(.bottom, 16)
+        .padding(.top, 5)  // Reduced from 10 to 5 for Dynamic Island
+        .padding(.bottom, 8)  // Reduced from 16 to 8
     }
     
     // MARK: - Search Section
@@ -108,15 +111,16 @@ struct ProfessionalRecentsScreen: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)  // Reduced from 8 to 6 to make search bar smaller
             .background(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 8)  // Reduced from 10 to 8 for smaller appearance
                     .fill(Color.professionalSurface)
                     .shadow(color: .professionalButtonShadow, radius: 1, x: 0, y: 1)
             )
         }
         .padding(.horizontal, 20)
-        .padding(.bottom, 16)
+        .padding(.top, 35)  // INCREASED: 20-30px top padding for Dynamic Island spacing
+        .padding(.bottom, 20)  // Increased from 16 to 20 for better spacing
         .onChange(of: searchText) { _ in
             reloadFilteredHistory()
         }
@@ -394,6 +398,40 @@ private struct ProfessionalCallHistoryRow: View {
         default:
             return .professionalTextSecondary
         }
+    }
+}
+
+extension ProfessionalRecentsScreen {
+    // MARK: - Debug Panel (Temporary)
+    private var debugPanel: some View {
+        VStack(spacing: 4) {
+            Text("🔧 DEBUG INFO")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(.orange)
+            
+            HStack {
+                Text("📞 Call History Count: \(database.callHistory.count)")
+                    .font(.system(size: 11))
+                    .foregroundColor(.professionalTextSecondary)
+                Spacer()
+            }
+            
+            HStack {
+                Text("📱 Filtered Count: \(filteredHistory.count)")
+                    .font(.system(size: 11))
+                    .foregroundColor(.professionalTextSecondary)
+                Spacer()
+            }
+            
+            Button("🔄 Force Refresh") {
+                database.fetchCallHistoryFiltered(by: "default")
+            }
+            .font(.system(size: 11))
+            .foregroundColor(.blue)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .background(Color.yellow.opacity(0.1))
     }
 }
 

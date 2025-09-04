@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="24F74" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithSwiftData="YES" userDefinedModelVersionIdentifier="">
-    <entity name="CallHistoryEntry" representedClassName="CallHistoryEntry" isAbstract="YES" syncable="YES" codeGenerationType="class">
+    <entity name="CallHistoryEntry" representedClassName="CallHistoryEntry" syncable="YES" codeGenerationType="class">
         <attribute name="callerName" attributeType="String"/>
         <attribute name="callId" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="callStatus" optional="YES" attributeType="String"/>

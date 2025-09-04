@@ -233,6 +233,14 @@ extension HomeViewController : VoIPDelegate, TxClientDelegate {
                 case .NEW:
                     break
                 case .ACTIVE:
+                    // 🔧 FIX: Update call history when call becomes active (answered)
+                    CallHistoryDatabase.shared.updateCallHistoryEntry(
+                        callId: callId,
+                        status: .answered
+                    ) { success in
+                        print("📞 CALL HISTORY: Call answered status \(success ? "updated" : "failed to update")")
+                    }
+                    
                     if let call = self.appDelegate.currentCall {
                         call.onCallQualityChange = { qualityMetric in
                             print("metric_values: \(qualityMetric)")
@@ -250,10 +258,33 @@ extension HomeViewController : VoIPDelegate, TxClientDelegate {
                     }
                     break
                 case .DONE(let reason):
-                    // Handle call termination reason if needed
+                    // 🔧 FIX: Update call history when call ends with final status
+                    var finalStatus: CallStatus = .answered // Default to answered for successful calls
                     if let reason = reason {
                         print("Call ended with reason: \(reason.cause ?? "Unknown"), SIP code: \(reason.sipCode ?? 0)")
+                        // Determine final status based on termination reason
+                        switch reason.cause {
+                        case "USER_BUSY":
+                            finalStatus = .failed
+                        case "CALL_REJECTED":
+                            finalStatus = .rejected
+                        case "NO_ANSWER":
+                            finalStatus = .missed
+                        case "NORMAL_CLEARING":
+                            finalStatus = .answered // Normal end after successful call
+                        default:
+                            finalStatus = .answered // Assume successful if unknown
+                        }
                     }
+                    
+                    // Update call history with final status
+                    CallHistoryDatabase.shared.updateCallHistoryEntry(
+                        callId: callId,
+                        status: finalStatus
+                    ) { success in
+                        print("📞 CALL HISTORY: Call completion status \(success ? "updated" : "failed to update") - \(finalStatus)")
+                    }
+                    
                     // Clear CallKit UUID when call is done
                     if let callKitUUID = self.appDelegate.callKitUUID, callKitUUID == callId {
                         NSLog("🔥 UI-ROUTING: Call done - clearing CallKit UUID")
@@ -349,12 +380,20 @@ extension HomeViewController : VoIPDelegate, TxClientDelegate {
                 NSLog("🔴 STEP 30: TxClient.newCall() returned nil call object")
             }
             
-            NSLog("🔴 STEP 31: Adding call to CallHistoryManager")
-            // CallHistoryManager.shared.handleStartCallAction(
-            //     callId:callUUID,
-            //     destinationNumber: destinationNumber,
-            //     callerName: sipCred.callerName ?? ""
-            // )
+            NSLog("🔴 STEP 31: Adding call to CallHistoryDatabase")
+            // 🔧 FIX: Track outgoing call in call history database
+            CallHistoryDatabase.shared.createCallHistoryEntry(
+                callerName: sipCred.callerName ?? "",
+                callId: callUUID,
+                callStatus: "outgoing", // Initial status for outgoing calls
+                direction: "outgoing",
+                metadata: "",
+                phoneNumber: destinationNumber,
+                profileId: "default", // Using default profile as per UI
+                timestamp: Date()
+            ) { success in
+                NSLog("📞 CALL HISTORY: Outgoing call \(success ? "stored" : "failed to store") - \(destinationNumber)")
+            }
             
             NSLog("🔴 STEP 32: Calling completionHandler with call: \(call != nil ? "SUCCESS" : "FAILED")")
             completionHandler(call)

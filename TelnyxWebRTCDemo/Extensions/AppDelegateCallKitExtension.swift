@@ -67,23 +67,29 @@ extension AppDelegate : CXProviderDelegate {
     func newIncomingCall(from: String, uuid: UUID, completion: ((Error?) -> Void)? = nil) {
         print("AppDelegate:: report NEW incoming call from [\(from)] uuid [\(uuid)]")
 
-        // 🔥 WHATSAPP-STYLE INCOMING CALL ROUTING 🔥
-        // Incoming calls almost always use CallKit for native iOS experience
-        let shouldUseCallKit = CallInterfaceRouter.shared.shouldUseCallKit(
-            for: uuid, 
-            origin: .incoming, 
-            destination: from
-        )
+        // 🔥 iOS 18 FIX: 100% CALLKIT-ONLY - No routing decisions
+        // All calls MUST use CallKit for iOS 18 automatic UI switching compatibility
+        let shouldUseCallKit = true  // ALWAYS TRUE for iOS 18 compatibility
         
-        print("🔥 INCOMING CALL: Router decision for [\(from)]: \(shouldUseCallKit ? "CallKit" : "App UI")")
+        print("🔥 iOS 18 FIX: CALLKIT-ONLY mode - always using CallKit for [\(from)]")
         
         if let call = self.telnyxClient?.calls[uuid] {
-            // Track incoming call in call history
-            // CallHistoryManager.shared.handleIncomingCall(
-            //     callId: uuid,
-            //     phoneNumber: call.callInfo?.callerNumber ?? "",
-            //     callerName: call.callInfo?.callerName ?? ""
-            // )
+            // 🔧 FIX: Track incoming call in call history database
+            let callerName = call.callInfo?.callerName ?? ""
+            let phoneNumber = call.callInfo?.callerNumber ?? ""
+            
+            CallHistoryDatabase.shared.createCallHistoryEntry(
+                callerName: callerName,
+                callId: uuid,
+                callStatus: "incoming", // Initial status for incoming calls
+                direction: "incoming",
+                metadata: "",
+                phoneNumber: phoneNumber,
+                profileId: "default", // Using default profile as per UI
+                timestamp: Date()
+            ) { success in
+                print("📞 CALL HISTORY: Incoming call \(success ? "stored" : "failed to store") - \(phoneNumber)")
+            }
         }
 
         #if targetEnvironment(simulator)

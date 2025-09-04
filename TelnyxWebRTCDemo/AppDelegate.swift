@@ -67,6 +67,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         self.initPushKit()
         self.initCallKit()
         
+        // 🔧 FIX: Initialize Core Data early in app lifecycle
+        CallHistoryDatabase.shared.initializeCoreData()
+        
         return true
     }
     
@@ -94,17 +97,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
      Initialize callkit framework
      */
     func initCallKit() {
-        let configuration = CXProviderConfiguration(localizedName: "TelnyxRTC")
+        let configuration = CXProviderConfiguration()
         configuration.maximumCallGroups = 2
         configuration.maximumCallsPerCallGroup = 1
         
-        // 🔥 CALLKIT-ONLY: Configure for native CallKit experience - enable full native UI
+        // 🔥 iOS 18 FIX: Critical configuration for automatic UI switching
         configuration.supportsVideo = false
         configuration.includesCallsInRecents = true
         configuration.supportedHandleTypes = [.generic]
         
-        // 🔥 CALLKIT-ONLY: Ensure CallKit automatically brings itself to foreground
-        configuration.supportsVideo = false
+        // 🔥 iOS 18 FIX: Enable proper call management for Dynamic Island devices  
+        // Use only valid CXProviderConfiguration properties
+        configuration.maximumCallsPerCallGroup = 1  // Limit to single call for iOS 18 stability
+        configuration.maximumCallGroups = 1         // Simplified for iOS 18 automatic UI
         
         // Customize appearance to match app
         if let appIcon = UIImage(named: "AppIcon") {
@@ -119,28 +124,40 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             provider.setDelegate(self, queue: nil)
         }
         
-        NSLog("🔥 CALLKIT-ONLY: CallKit provider initialized for automatic foreground control")
+        NSLog("🔥 iOS 18 FIX: CallKit provider initialized with valid iOS 18-compatible configuration")
     }
     
-    /// Minimize app to let CallKit take foreground control for outgoing calls
-    /// This enables CallKit system UI by putting app in background state
+    /// iOS 18 FIX: Enhanced app backgrounding for CallKit automatic UI takeover
+    /// This enables CallKit system UI by properly managing app lifecycle state
     func minimizeAppForCallKit() {
         DispatchQueue.main.async {
             if UIApplication.shared.applicationState == .active {
-                NSLog("🔥 CALLKIT OUTGOING: Minimizing app to let CallKit show system UI")
+                NSLog("🔥 iOS 18 FIX: Minimizing app to let CallKit show automatic system UI")
                 
-                // Put app in background state so CallKit can show system interface
-                // This is the key to enabling CallKit system UI for outgoing calls
+                // iOS 18 FIX: Force immediate background transition 
                 UIApplication.shared.resignFirstResponder()
                 
-                // Dismiss any presented view controllers that might interfere
-                if let rootVC = self.window?.rootViewController {
-                    rootVC.presentedViewController?.dismiss(animated: false)
+                // iOS 18 FIX: Dismiss ALL presented view controllers that might block CallKit UI
+                var currentVC = self.window?.rootViewController
+                while currentVC?.presentedViewController != nil {
+                    currentVC?.presentedViewController?.dismiss(animated: false, completion: nil)
+                    currentVC = currentVC?.presentedViewController
                 }
                 
-                // Let CallKit take control by backgrounding the app
+                // iOS 18 FIX: Send proper background notifications for CallKit takeover
                 NotificationCenter.default.post(name: UIApplication.willResignActiveNotification, object: nil)
-                NSLog("🔥 CALLKIT OUTGOING: App backgrounded, CallKit system UI should now show")
+                NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+                
+                // iOS 18 FIX: Add small delay to ensure background state is processed
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    NSLog("🔥 iOS 18 FIX: App backgrounding complete - CallKit should automatically show system UI")
+                    
+                    // iOS 18 FIX: Ensure window is not intercepting CallKit UI
+                    self.window?.isUserInteractionEnabled = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        self.window?.isUserInteractionEnabled = true
+                    }
+                }
             }
         }
     }

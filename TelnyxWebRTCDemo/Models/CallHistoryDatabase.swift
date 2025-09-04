@@ -10,28 +10,47 @@ class CallHistoryDatabase: ObservableObject {
     // Publisher for call history
     @Published public var callHistory: [CallHistoryEntry] = []
     
+    // Track if Core Data is fully initialized
+    private var isInitialized = false
+    
     // Create the persistent container here
     private lazy var persistentContainer: NSPersistentContainer = {
-        let container = NSPersistentContainer(name: "AppModel")  // Replace with your actual model name
+        let container = NSPersistentContainer(name: "AppModel")
+        
+        // 🔧 FIX: Ensure persistent storage (not in-memory)
         container.loadPersistentStores { (description, error) in
             if let error = error {
-                fatalError("Unresolved error \(error), \(error.localizedDescription)")
+                print("❌ CRITICAL: Core Data failed to load: \(error)")
+                fatalError("Core Data error: \(error)")
+            }
+            print("✅ Core Data store loaded successfully: \(description.url?.absoluteString ?? "unknown")")
+            DispatchQueue.main.async {
+                self.isInitialized = true
             }
         }
+        
+        // 🔧 FIX: Enable automatic merging for persistence
+        container.viewContext.automaticallyMergesChangesFromParent = true
+        container.viewContext.mergePolicy = NSMergeByPropertyStoreTrumpMergePolicy
+        
         return container
     }()
     
-
-    
+    // 🔧 FIX: Use viewContext (main context) for proper persistence
     private lazy var context: NSManagedObjectContext = {
-        let bgContext = self.persistentContainer.newBackgroundContext()
-        bgContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
-        bgContext.automaticallyMergesChangesFromParent = true
-        return bgContext
+        return self.persistentContainer.viewContext
     }()
     
     // Maximum number of call history entries per profile
     private let maxHistoryCount = 100
+    
+    // 🔧 FIX: Ensure Core Data initialization before any operations
+    public func initializeCoreData() {
+        // Access persistentContainer to trigger lazy initialization
+        _ = self.persistentContainer
+        _ = self.context
+        print("🔧 CORE DATA: Initialization triggered")
+    }
     
     // Function to add a new call history entry
     func createCallHistoryEntry(callerName: String, callId: UUID, callStatus: String, direction: String, metadata: String, phoneNumber: String, profileId: String, timestamp: Date, completion: @escaping (Bool) -> Void) {
@@ -39,8 +58,8 @@ class CallHistoryDatabase: ObservableObject {
         let fetchRequest: NSFetchRequest<CallHistoryEntry> = CallHistoryEntry.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "callId == %@", callId as CVarArg)
         
-        // Use viewContext for the fetch and insertion
-        context.perform {
+        // 🔧 FIX: Use main thread for viewContext operations
+        DispatchQueue.main.async {
             do {
                 let existingRecords = try self.context.fetch(fetchRequest)
                 
@@ -56,19 +75,20 @@ class CallHistoryDatabase: ObservableObject {
                     callHistoryEntry.profileId = profileId
                     callHistoryEntry.timestamp = timestamp
                     
-                    // Save the context
+                    // 🔧 FIX: Save with error handling and ensure persistence
                     try self.context.save()
+                    print("📞 CALL HISTORY: Entry saved successfully - \(phoneNumber)")
                     
-                    // Refresh the call history
-                    self.fetchCallHistoryFiltered(by:profileId)
+                    // Refresh the call history on main thread
+                    self.fetchCallHistoryFiltered(by: profileId)
                     
                     completion(true)
                 } else {
-                    print("A call history entry with the same callId already exists.")
+                    print("📞 CALL HISTORY: Entry already exists for callId: \(callId)")
                     completion(false)
                 }
             } catch {
-                print("Core Data operation failed: \(error.localizedDescription)")
+                print("❌ CALL HISTORY: Failed to save entry: \(error.localizedDescription)")
                 completion(false)
             }
         }
@@ -77,19 +97,22 @@ class CallHistoryDatabase: ObservableObject {
     
     // Function to fetch filtered call history by profileId
     func fetchCallHistoryFiltered(by profileId: String){
+        // 🔧 FIX: Ensure Core Data is initialized before fetching
+        self.initializeCoreData()
+        
         let fetchRequest: NSFetchRequest<CallHistoryEntry> = CallHistoryEntry.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "profileId == %@", profileId)
         
         var filteredEntries: [CallHistoryEntry] = []
         
-        context.perform {
+        // 🔧 FIX: Wait for initialization then fetch on main thread
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             do {
                 filteredEntries = try self.context.fetch(fetchRequest)
-                DispatchQueue.main.async {
-                    self.callHistory = filteredEntries  // Update the @Published callHistory property
-                }
+                self.callHistory = filteredEntries  // Update the @Published callHistory property
+                print("📞 CALL HISTORY: Fetched \(filteredEntries.count) entries for profile: \(profileId) (initialized: \(self.isInitialized))")
             } catch {
-                print("Failed to fetch filtered call history entries: \(error.localizedDescription)")
+                print("❌ CALL HISTORY: Failed to fetch entries: \(error.localizedDescription)")
             }
         }
         
@@ -100,7 +123,8 @@ class CallHistoryDatabase: ObservableObject {
         let fetchRequest: NSFetchRequest<CallHistoryEntry> = CallHistoryEntry.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "callId == %@", callId as CVarArg)
         
-        context.perform {
+        // 🔧 FIX: Use main thread for viewContext operations
+        DispatchQueue.main.async {
             do {
                 let entries = try self.context.fetch(fetchRequest)
                 
@@ -112,18 +136,19 @@ class CallHistoryDatabase: ObservableObject {
                     
                     // Update the status if provided
                     if let status = status {
-                        entry.callStatus = status.rawValue  // Assuming CallStatus is an enum with raw values
+                        entry.callStatus = status.rawValue
                     }
                     
-                    // Save the changes in the context
+                    // 🔧 FIX: Save with error handling and ensure persistence
                     try self.context.save()
+                    print("📞 CALL HISTORY: Entry updated successfully - \(callId)")
                     completion(true)
                 } else {
-                    print("No call history entry found with the given callId.")
+                    print("📞 CALL HISTORY: No entry found with callId: \(callId)")
                     completion(false)
                 }
             } catch {
-                print("Failed to update call history entry: \(error.localizedDescription)")
+                print("❌ CALL HISTORY: Failed to update entry: \(error.localizedDescription)")
                 completion(false)
             }
         }
@@ -134,18 +159,20 @@ class CallHistoryDatabase: ObservableObject {
         let fetchRequest: NSFetchRequest<CallHistoryEntry> = CallHistoryEntry.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "callId == %@", callId as CVarArg)
         
-        context.perform {
+        // 🔧 FIX: Use main thread for viewContext operations
+        DispatchQueue.main.async {
             do {
                 let entries = try self.context.fetch(fetchRequest)
                 if let entry = entries.first {
                     self.context.delete(entry)
                     try self.context.save()
+                    print("📞 CALL HISTORY: Entry deleted successfully - \(callId)")
                     self.fetchCallHistoryFiltered(by: profileId)
                 } else {
-                    print("No call history entry found with the given callId.")
+                    print("📞 CALL HISTORY: No entry found to delete with callId: \(callId)")
                 }
             } catch {
-                print("Failed to delete call history entry: \(error.localizedDescription)")
+                print("❌ CALL HISTORY: Failed to delete entry: \(error.localizedDescription)")
             }
         }
     }
@@ -155,16 +182,18 @@ class CallHistoryDatabase: ObservableObject {
         let fetchRequest: NSFetchRequest<CallHistoryEntry> = CallHistoryEntry.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "profileId == %@", profileId)
         
-        context.perform {
+        // 🔧 FIX: Use main thread for viewContext operations
+        DispatchQueue.main.async {
             do {
                 let entries = try self.context.fetch(fetchRequest)
                 for entry in entries {
                     self.context.delete(entry)
                 }
                 try self.context.save()
+                print("📞 CALL HISTORY: Cleared \(entries.count) entries for profile: \(profileId)")
                 self.fetchCallHistoryFiltered(by: profileId) // Refresh the callHistory property
             } catch {
-                print("Failed to clear call history for profileId \(profileId): \(error.localizedDescription)")
+                print("❌ CALL HISTORY: Failed to clear history for profile \(profileId): \(error.localizedDescription)")
             }
         }
     }
