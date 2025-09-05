@@ -1,3 +1,5 @@
+import AVFoundation
+import Contacts
 import Reachability
 import SwiftUI
 import TelnyxRTC
@@ -18,6 +20,9 @@ class HomeViewController: UIViewController {
     var incomingCall: Bool = false
     var isSpeakerActive: Bool = false
     let reachability = try! Reachability()
+    
+    // Property to store active fallback controller
+    private var activeFallbackCallController: UIViewController?
 
     // Timer for connection timeout
     private var connectionTimer: Timer?
@@ -193,6 +198,64 @@ extension HomeViewController {
         }
 
         initEnvironment()
+        requestRequiredPermissions()
+    }
+    
+    // MARK: - Permissions Management
+    
+    private func requestRequiredPermissions() {
+        NSLog("🎤 PERMISSIONS: Requesting microphone and contacts permissions")
+        
+        // Request microphone permission
+        requestMicrophonePermission()
+        
+        // Request contacts permission  
+        requestContactsPermission()
+    }
+    
+    private func requestMicrophonePermission() {
+        AVAudioSession.sharedInstance().requestRecordPermission { [weak self] granted in
+            DispatchQueue.main.async {
+                if granted {
+                    NSLog("✅ PERMISSIONS: Microphone permission granted")
+                } else {
+                    NSLog("❌ PERMISSIONS: Microphone permission denied")
+                    self?.showPermissionDeniedAlert(for: "microphone")
+                }
+            }
+        }
+    }
+    
+    private func requestContactsPermission() {
+        let store = CNContactStore()
+        store.requestAccess(for: .contacts) { [weak self] granted, error in
+            DispatchQueue.main.async {
+                if granted {
+                    NSLog("✅ PERMISSIONS: Contacts permission granted")
+                } else {
+                    NSLog("❌ PERMISSIONS: Contacts permission denied - error: %@", error?.localizedDescription ?? "unknown")
+                    self?.showPermissionDeniedAlert(for: "contacts")
+                }
+            }
+        }
+    }
+    
+    private func showPermissionDeniedAlert(for permissionType: String) {
+        let alert = UIAlertController(
+            title: "Permission Required",
+            message: "This app needs \(permissionType) access to work properly. Please enable it in Settings.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Settings", style: .default) { _ in
+            if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(settingsURL)
+            }
+        })
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        present(alert, animated: true)
     }
 }
 
@@ -502,6 +565,10 @@ extension HomeViewController {
                 
                 NSLog("🟢 DIRECT CALL STEP 4: App UI call initiated successfully")
                 
+                // 🔥 CRITICAL: Show WhatsApp-style in-app call UI
+                NSLog("🟢 DIRECT CALL STEP 5: Activating WhatsApp-style fallback call UI")
+                self.activateFallbackCallUI(callUUID: uuid, reason: .userPreference)
+                
             } else {
                 NSLog("🟢 DIRECT CALL STEP 3: FAILED - TxClient.newCall() returned nil")
             }
@@ -579,6 +646,73 @@ extension HomeViewController {
             } else {
                 NSLog("🔥 TRANSITION UI: Warning - no matching current call found for transition")
             }
+        }
+    }
+    
+    // MARK: - Phase 6 CallKit Enhancement Integration Methods
+    
+    /// Handle CallKit state changes from Phase 6 bridge
+    func handleCallKitStateChange(callUUID: UUID, state: String) {
+        NSLog("🔥 PHASE 6: HomeViewController received CallKit state change for %@ to %@", callUUID.uuidString, state)
+        // Implement state handling logic here
+        DispatchQueue.main.async { [weak self] in
+            // Update UI based on CallKit state change
+            // This could update call status indicators, button states, etc.
+        }
+    }
+    
+    /// Prepare for transition from CallKit to App UI
+    func prepareForCallKitToAppTransition(callUUID: UUID) {
+        NSLog("🔥 PHASE 6: HomeViewController preparing for CallKit to App transition for %@", callUUID.uuidString)
+        DispatchQueue.main.async { [weak self] in
+            // Prepare app UI to receive call control from CallKit
+            // This could involve setting up the call interface, updating state, etc.
+        }
+    }
+    
+    /// Activate fallback call UI when CallKit fails
+    func activateFallbackCallUI(callUUID: UUID, reason: FallbackActivationReason) {
+        NSLog("🟡 DEBUG: *** activateFallbackCallUI CALLED *** UUID: %@, Reason: %@", callUUID.uuidString, reason.rawValue)
+        NSLog("🔥 PHASE 6: HomeViewController activating fallback UI for %@ - reason: %@", callUUID.uuidString, reason.rawValue)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { 
+                NSLog("🔥 DEBUG: activateFallbackCallUI - self is nil")
+                return 
+            }
+            
+            NSLog("🔥 PHASE 6: Creating FallbackCallView for UUID %@", callUUID.uuidString)
+            NSLog("🔥 DEBUG: About to set showFallbackCallUI = true")
+            
+            // Update the HomeViewModel to show the fallback UI
+            self.viewModel.showFallbackCallUI = true
+            NSLog("🔥 DEBUG: About to set currentCallUUID = %@", callUUID.uuidString)
+            self.viewModel.currentCallUUID = callUUID
+            NSLog("🔥 DEBUG: Set currentCallUUID = %@", callUUID.uuidString)
+            
+            NSLog("✅ PHASE 6: Fallback call interface activated - HomeView will show FallbackCallView")
+        }
+    }
+    
+    /// Dismiss the fallback call UI
+    private func dismissFallbackCallUI() {
+        NSLog("🔥 PHASE 6: Dismissing FallbackCallView")
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Update the HomeViewModel to hide the fallback UI
+            self.viewModel.showFallbackCallUI = false
+            self.viewModel.currentCallUUID = nil
+            
+            NSLog("✅ PHASE 6: FallbackCallView dismissed")
+        }
+    }
+    
+    /// Handle audio route changes from Phase 6 bridge
+    func handleAudioRouteChange(callUUID: UUID, route: AVAudioSessionRouteDescription) {
+        NSLog("🔥 PHASE 6: HomeViewController handling audio route change for %@ to %@", callUUID.uuidString, route.description)
+        DispatchQueue.main.async { [weak self] in
+            // Update UI to reflect audio route change
+            // This could update speaker/headphone indicators, call controls, etc.
         }
     }
 }

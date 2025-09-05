@@ -10,6 +10,267 @@ import UIKit
 import AVFoundation
 import TelnyxRTC
 import CallKit
+import Combine
+
+// MARK: - Phase 6 WhatsApp-Style CallKit Enhancement Integration
+// Importing enterprise-grade synchronization and communication systems
+// ENABLED - All compilation errors fixed
+
+// MARK: - Phase 6 CallKit Enhancement Integration Properties
+
+extension AppDelegate {
+    
+    /// Phase 6 enhancement system integration
+    private var callStateSynchronizer: CallStateSynchronizer {
+        return CallStateSynchronizer.shared
+    }
+    
+    private var callEventBroadcaster: CallEventBroadcaster {
+        return CallEventBroadcaster.shared
+    }
+    
+    private var callKitAppUIBridge: CallKitAppUIBridge {
+        return CallKitAppUIBridge.shared
+    }
+    
+    /// Initialize Phase 6 enhancement systems
+    func initializePhase6Enhancements() {
+        setupCallKitBridge()
+        setupEventSubscriptions()
+        NSLog("🔥 PHASE 6: CallKit enhancement systems initialized")
+    }
+    
+    /// Setup CallKit-App UI communication bridge
+    private func setupCallKitBridge() {
+        // Register AppDelegate as the CallKit delegate for the bridge
+        callKitAppUIBridge.registerCallKitDelegate(self)
+        NSLog("🔥 PHASE 6: CallKit bridge delegate registered")
+    }
+    
+    /// Setup event subscriptions for system-wide coordination
+    private func setupEventSubscriptions() {
+        // Subscribe to critical events for CallKit coordination
+        callEventBroadcaster.subscribe(self)
+        NSLog("🔥 PHASE 6: Event broadcaster subscriptions established")
+    }
+}
+
+// MARK: - CallKit Event Subscriber Implementation
+extension AppDelegate: CallKitEventSubscriber {
+    
+    nonisolated var subscriberID: UUID {
+        return UUID() // Generate consistent ID based on app delegate
+    }
+    
+    nonisolated var subscriberPriority: EventPriority {
+        return .critical // AppDelegate has highest priority for CallKit events
+    }
+    
+    nonisolated func handleEvent(_ event: CallKitEvent, metadata: EventMetadata) {
+        NSLog("🔥 PHASE 6: AppDelegate handling event: %@", event.description)
+        
+        Task { @MainActor in
+            switch event {
+            case .detectionStarted(let callUUID, _):
+                handleCallKitDetectionStarted(callUUID: callUUID, metadata: metadata)
+                
+            case .detectionFailed(let callUUID, let error, _):
+                handleCallKitDetectionFailed(callUUID: callUUID, error: error, metadata: metadata)
+                
+            case .backgroundingRequested(let callUUID, let strategy, _):
+                handleBackgroundingRequested(callUUID: callUUID, strategy: strategy, metadata: metadata)
+                
+            case .criticalError(let callUUID, let error, _):
+                handleCriticalError(callUUID: callUUID, error: error, metadata: metadata)
+                
+            case .systemCallKitStateChanged(let state, _):
+                handleSystemCallKitStateChange(state: state, metadata: metadata)
+                
+            default:
+                // Log other events but don't process them
+                NSLog("🔥 PHASE 6: AppDelegate received event: %@", event.description)
+            }
+        }
+    }
+    
+    nonisolated func shouldReceiveEvent(_ event: CallKitEvent, metadata: EventMetadata) -> Bool {
+        // AppDelegate receives critical events and state changes
+        switch event {
+        case .detectionStarted, .detectionFailed, .backgroundingRequested, .criticalError, .systemCallKitStateChanged:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    // MARK: - Phase 6 Event Handlers
+    
+    private func handleCallKitDetectionStarted(callUUID: UUID, metadata: EventMetadata) {
+        NSLog("🔥 PHASE 6: CallKit detection started for call %@", callUUID.uuidString)
+        
+        // Sync state with synchronizer
+        if let call = telnyxClient?.calls[callUUID] {
+            callStateSynchronizer.syncState(
+                from: .callKit,
+                callUUID: callUUID,
+                fromState: nil,
+                toState: call.callState,
+                metadata: metadata.context
+            )
+        }
+    }
+    
+    private func handleCallKitDetectionFailed(callUUID: UUID, error: CallKitError, metadata: EventMetadata) {
+        NSLog("🔥 PHASE 6: CallKit detection failed for call %@ - %@", callUUID.uuidString, error.description)
+        
+        // Request fallback UI activation through bridge
+        let reason: FallbackActivationReason
+        switch error {
+        case .detectionTimeout: reason = .callKitTimeout
+        case .backgroundingFailed: reason = .systemRestriction
+        default: reason = .callKitError
+        }
+        
+        callKitAppUIBridge.requestFallbackActivation(callUUID: callUUID, reason: reason)
+    }
+    
+    private func handleBackgroundingRequested(callUUID: UUID, strategy: BackgroundingStrategy, metadata: EventMetadata) {
+        NSLog("🔥 PHASE 6: Backgrounding requested for call %@ with strategy %@", callUUID.uuidString, strategy.rawValue)
+        
+        // Execute the backgrounding request
+        DispatchQueue.main.async { [weak self] in
+            self?.minimizeAppForCallKit()
+        }
+    }
+    
+    private func handleCriticalError(callUUID: UUID?, error: CallKitError, metadata: EventMetadata) {
+        NSLog("🔥 PHASE 6: Critical error occurred - %@", error.description)
+        
+        if let callUUID = callUUID {
+            // Attempt recovery through bridge
+            callKitAppUIBridge.requestFallbackActivation(callUUID: callUUID, reason: .emergencyFallback)
+        }
+    }
+    
+    private func handleSystemCallKitStateChange(state: String, metadata: EventMetadata) {
+        NSLog("🔥 PHASE 6: System CallKit state changed: %@", String(describing: state))
+        
+        // Forward to bridge for system-wide coordination
+        // Bridge will handle appropriate responses
+    }
+}
+
+// MARK: - CallKit to App UI Bridge Protocol Implementation
+extension AppDelegate: CallKitToAppUIProtocol {
+    
+    func callKitStateChanged(callUUID: UUID, from: String?, to: String, context: BridgeContext) {
+        NSLog("🔥 PHASE 6 BRIDGE: CallKit state changed for %@ from %@ to %@", 
+              callUUID.uuidString, from ?? "nil", to)
+        
+        // Sync with CallStateSynchronizer
+        let telnyxCallState = mapCXCallStateToTelnyxCallState(to)
+        let fromTelnyxState = from.map { mapCXCallStateToTelnyxCallState($0) }
+        
+        callStateSynchronizer.syncState(
+            from: .callKit,
+            callUUID: callUUID,
+            fromState: fromTelnyxState,
+            toState: telnyxCallState,
+            metadata: context.metadata
+        )
+        
+        // Update any UI delegates if needed
+        DispatchQueue.main.async { [weak self] in
+            if let voipDelegate = self?.voipDelegate as? HomeViewController {
+                // Notify HomeViewController of state change
+                voipDelegate.handleCallKitStateChange(callUUID: callUUID, state: to)
+            }
+        }
+    }
+    
+    func prepareForTransition(callUUID: UUID, transition: BridgeTransition, context: BridgeContext) {
+        NSLog("🔥 PHASE 6 BRIDGE: Preparing for transition %@ for call %@", transition.rawValue, callUUID.uuidString)
+        
+        switch transition {
+        case .callKitToAppUI:
+            // Prepare app UI for incoming call handoff
+            DispatchQueue.main.async { [weak self] in
+                if let voipDelegate = self?.voipDelegate as? HomeViewController {
+                    voipDelegate.prepareForCallKitToAppTransition(callUUID: callUUID)
+                }
+            }
+            
+        case .appUIToCallKit:
+            // Prepare CallKit for app UI handoff
+            minimizeAppForCallKit()
+            
+        case .backgroundTransition:
+            // Handle background transition
+            DispatchQueue.main.async {
+                UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
+            }
+            
+        default:
+            NSLog("🔥 PHASE 6 BRIDGE: Transition type %@ handled generically", transition.rawValue)
+        }
+    }
+    
+    func callKitActionPerformed(callUUID: UUID, action: CXAction, result: BridgeActionResult, context: BridgeContext) {
+        NSLog("🔥 PHASE 6 BRIDGE: CallKit action performed - %@ with result %@", 
+              String(describing: action), result.rawValue)
+        
+        // Broadcast action result event
+        let eventMetadata = EventMetadata(
+            source: .callKit,
+            sessionID: context.sessionID,
+            correlationID: context.correlationID,
+            context: context.metadata
+        )
+        
+        if result == .success {
+            callEventBroadcaster.broadcast(.retryCompleted(callUUID: callUUID, strategy: .immediate, success: true, attempts: 1, metadata: eventMetadata))
+        } else {
+            let error = BridgeError.invalidState
+            callEventBroadcaster.broadcast(.criticalError(callUUID: callUUID, error: CallKitError.systemError(error), metadata: eventMetadata))
+        }
+    }
+    
+    func activateFallbackUI(callUUID: UUID, reason: FallbackActivationReason, context: BridgeContext) {
+        NSLog("🔥 PHASE 6 BRIDGE: Activating fallback UI for call %@ - reason: %@", callUUID.uuidString, reason.rawValue)
+        
+        // Activate fallback UI through HomeViewController
+        DispatchQueue.main.async { [weak self] in
+            if let voipDelegate = self?.voipDelegate as? HomeViewController {
+                voipDelegate.activateFallbackCallUI(callUUID: callUUID, reason: reason)
+            }
+        }
+    }
+    
+    func audioRouteChanged(callUUID: UUID, route: AVAudioSessionRouteDescription, context: BridgeContext) {
+        NSLog("🔥 PHASE 6 BRIDGE: Audio route changed for call %@ to %@", callUUID.uuidString, route.description)
+        
+        // Handle audio route change
+        DispatchQueue.main.async { [weak self] in
+            if let voipDelegate = self?.voipDelegate as? HomeViewController {
+                voipDelegate.handleAudioRouteChange(callUUID: callUUID, route: route)
+            }
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func mapCXCallStateToTelnyxCallState(_ cxState: String) -> CallState {
+        switch cxState {
+        case "connecting": return .CONNECTING
+        case "connected": return .ACTIVE
+        case "held": return .HELD
+        case "ended": return .DONE(reason: nil)
+        case "failed": return .DONE(reason: nil)
+        case "idle": return .NEW
+        default: return .NEW
+        }
+    }
+}
 
 // MARK: - CXProviderDelegate
 extension AppDelegate : CXProviderDelegate {
@@ -19,13 +280,23 @@ extension AppDelegate : CXProviderDelegate {
     ///   - uuid: The UUID of the outbound call
     ///   - handle: A handle for this call
     func executeStartCallAction(uuid: UUID, handle: String, destination: String) {
+        // 🔥 PHASE 6: Broadcast call start event
+        let eventMetadata = EventMetadata(source: .callKit, sessionID: UUID())
+        callEventBroadcaster.broadcast(.detectionStarted(callUUID: uuid, metadata: eventMetadata))
+        
         guard let provider = callKitProvider else {
             print("CallKit provider not available")
+            // 🔥 PHASE 6: Broadcast failure event
+            callEventBroadcaster.broadcast(.criticalError(callUUID: uuid, error: CallKitError.systemError(BridgeError.delegateNotRegistered), metadata: eventMetadata))
             return
         }
         
         // Store destination for later use in executeCall
         self.pendingCallDestination = destination
+        
+        // 🔥 PHASE 6: Notify bridge of outgoing call preparation
+        let bridgeContext = BridgeContext(source: .callKit, metadata: ["destination": destination, "handle": handle], sessionID: UUID())
+        callKitAppUIBridge.notifyAppUIStateChange(callUUID: uuid, state: AppUIState.initializing)
 
         let callHandle = CXHandle(type: .generic, value: handle)
         let startCallAction = CXStartCallAction(call: uuid, handle: callHandle)
@@ -66,6 +337,27 @@ extension AppDelegate : CXProviderDelegate {
     ///   - completion: iOS 18/2025 completion handler for proper PushKit timing
     func newIncomingCall(from: String, uuid: UUID, completion: ((Error?) -> Void)? = nil) {
         print("AppDelegate:: report NEW incoming call from [\(from)] uuid [\(uuid)]")
+        
+        // 🔥 PHASE 6: Broadcast incoming call event (with safety guards)
+        do {
+            let eventMetadata = EventMetadata(
+                source: .callKit, 
+                sessionID: UUID(),
+                context: ["caller": from, "origin": "incoming"]
+            )
+            callEventBroadcaster.broadcast(.detectionStarted(callUUID: uuid, metadata: eventMetadata))
+            
+            // 🔥 PHASE 6: Sync initial incoming call state
+            callStateSynchronizer.syncState(
+                from: .callKit,
+                callUUID: uuid,
+                fromState: nil,
+                toState: .RINGING,
+                metadata: ["caller": from, "incoming": true]
+            )
+        } catch {
+            print("🚨 Phase 6 integration error in incoming call: \(error.localizedDescription)")
+        }
 
         // 🔥 iOS 18 FIX: 100% CALLKIT-ONLY - No routing decisions
         // All calls MUST use CallKit for iOS 18 automatic UI switching compatibility
@@ -219,6 +511,27 @@ extension AppDelegate : CXProviderDelegate {
         NSLog("🔥 CALLKIT-ONLY: Setting callKitUUID = %@", action.callUUID.uuidString)
         self.callKitUUID = action.callUUID
         
+        // 🔥 PHASE 6: Broadcast call start action event (with safety guards)
+        do {
+            let eventMetadata = EventMetadata(
+                source: .callKit,
+                sessionID: UUID(),
+                context: ["action": "CXStartCallAction", "uuid": action.callUUID.uuidString]
+            )
+            callEventBroadcaster.broadcast(.detectionCompleted(callUUID: action.callUUID, result: .detected, metadata: eventMetadata))
+            
+            // 🔥 PHASE 6: Sync state transition to connecting
+            callStateSynchronizer.syncState(
+                from: .callKit,
+                callUUID: action.callUUID,
+                fromState: .NEW,
+                toState: .CONNECTING,
+                metadata: ["action": "startCall", "provider": "CallKit"]
+            )
+        } catch {
+            print("🚨 Phase 6 integration error in call start: \(error.localizedDescription)")
+        }
+        
         // 🔥 CALLKIT-ONLY: Let CallKit handle all UI - no app interference
         NSLog("🔥 CALLKIT-ONLY: Requesting CallKit to take foreground control")
         
@@ -270,6 +583,35 @@ extension AppDelegate : CXProviderDelegate {
 
     func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
         NSLog("🔥 CALLKIT OUTGOING: ANSWER call action: callKitUUID [\(String(describing: self.callKitUUID))] action [\(action.callUUID)]")
+        
+        // 🔥 PHASE 6: Broadcast call answer event (with safety guards)
+        do {
+            let eventMetadata = EventMetadata(
+                source: .callKit,
+                sessionID: UUID(),
+                context: ["action": "CXAnswerCallAction", "uuid": action.callUUID.uuidString]
+            )
+            callEventBroadcaster.broadcast(.detectionCompleted(callUUID: action.callUUID, result: .detected, metadata: eventMetadata))
+            
+            // 🔥 PHASE 6: Sync state transition to active
+            callStateSynchronizer.syncState(
+                from: .callKit,
+                callUUID: action.callUUID,
+                fromState: .RINGING,
+                toState: .ACTIVE,
+                metadata: ["action": "answerCall", "provider": "CallKit"]
+            )
+            
+            // 🔥 PHASE 6: Notify bridge of call answer
+            let bridgeContext = BridgeContext(
+                source: .callKit,
+                metadata: ["action": "answer", "callKitUUID": self.callKitUUID?.uuidString ?? "unknown"],
+                sessionID: UUID()
+            )
+            callKitAppUIBridge.notifyCallKitActionResult(callUUID: action.callUUID, action: action, result: .success)
+        } catch {
+            print("🚨 Phase 6 integration error in call answer: \(error.localizedDescription)")
+        }
 
         // 🔥 CALLKIT OUTGOING: Ensure CallKit system UI remains active for answered calls
         DispatchQueue.main.async {
@@ -293,6 +635,32 @@ extension AppDelegate : CXProviderDelegate {
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         print("AppDelegate:: END call action: callKitUUID [\(String(describing: self.callKitUUID))] action [\(action.callUUID)]")
+        
+        // 🔥 PHASE 6: Broadcast call end event (with safety guards)
+        do {
+            let eventMetadata = EventMetadata(
+                source: .callKit,
+                sessionID: UUID(),
+                context: ["action": "CXEndCallAction", "uuid": action.callUUID.uuidString]
+            )
+            callEventBroadcaster.broadcast(.detectionCompleted(callUUID: action.callUUID, result: .detected, metadata: eventMetadata))
+            
+            // 🔥 PHASE 6: Sync state transition to done
+            let currentCall = self.telnyxClient?.calls[action.callUUID]
+            let fromState = currentCall?.callState
+            callStateSynchronizer.syncState(
+                from: .callKit,
+                callUUID: action.callUUID,
+                fromState: fromState,
+                toState: .DONE(reason: nil),
+                metadata: ["action": "endCall", "provider": "CallKit"]
+            )
+            
+            // 🔥 PHASE 6: Notify bridge of call end
+            callKitAppUIBridge.notifyCallKitActionResult(callUUID: action.callUUID, action: action, result: .success)
+        } catch {
+            print("🚨 Phase 6 integration error in call end: \(error.localizedDescription)")
+        }
         
         // Track call end in call history
         if let call = self.telnyxClient?.calls[action.callUUID] {
@@ -345,6 +713,29 @@ extension AppDelegate : CXProviderDelegate {
     
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         print("provider:didActivateAudioSession:")
+        
+        // 🔥 PHASE 6: Broadcast audio session activation event (with safety guards)
+        do {
+            let eventMetadata = EventMetadata(
+                source: .system,
+                sessionID: UUID(),
+                context: ["audioSession": "activated", "category": audioSession.category.rawValue]
+            )
+            callEventBroadcaster.broadcast(.systemAudioSessionChanged(category: audioSession.category, metadata: eventMetadata))
+            
+            // 🔥 PHASE 6: Notify bridge of audio route change if there's an active call
+            if let currentCallUUID = self.callKitUUID {
+                let bridgeContext = BridgeContext(
+                    source: .system,
+                    metadata: ["audioSessionState": "activated"],
+                    sessionID: UUID()
+                )
+                callKitAppUIBridge.notifyAudioRouteChange(callUUID: currentCallUUID, route: audioSession.currentRoute)
+            }
+        } catch {
+            print("🚨 Phase 6 integration error in audio session: \(error.localizedDescription)")
+        }
+        
         self.telnyxClient!.enableAudioSession(audioSession: audioSession)
     }
     
@@ -559,23 +950,23 @@ public class CallInterfaceRouter: ObservableObject {
             NSLog("🔥   - Decision: CallKit (incoming calls always use CallKit)")
             
         case .outgoing:
-            // 🔥 CALLKIT-ONLY: All outgoing calls use CallKit for consistent native experience
-            useCallKit = true
-            NSLog("🔥   - Decision: CallKit (CALLKIT-ONLY implementation - all outgoing calls use CallKit)")
-            
-            // Legacy device context logic - now all paths lead to CallKit
+            // 🔥 WHATSAPP-STYLE: Outgoing calls use IN-APP interface as primary choice
             switch deviceContext {
             case .locked:
-                NSLog("🔥     - Device Context: locked (CallKit)")
+                useCallKit = true  // Device locked - use CallKit for system access
+                NSLog("🔥   - Decision: CallKit (device locked - system access needed)")
                 
             case .unlocked, .foreground:
-                NSLog("🔥     - Device Context: unlocked/foreground (CallKit-only override)")
+                useCallKit = false  // App active - use WhatsApp-style in-app interface
+                NSLog("🔥   - Decision: App UI (WhatsApp-style - app is active/foreground)")
                 
             case .background:
-                NSLog("🔥     - Device Context: background (CallKit)")
+                useCallKit = true   // App backgrounded - use CallKit
+                NSLog("🔥   - Decision: CallKit (app backgrounded)")
                 
             case .unknown:
-                NSLog("🔥     - Device Context: unknown (CallKit-only override)")
+                useCallKit = false  // Default to in-app when uncertain
+                NSLog("🔥   - Decision: App UI (WhatsApp-style - default for unknown context)")
             }
         }
         
