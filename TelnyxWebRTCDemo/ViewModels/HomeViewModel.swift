@@ -11,6 +11,20 @@ class HomeViewModel: ObservableObject {
     @Published var seletedRegion: Region = Region.auto
     @Published var callState: CallState = .DONE(reason: nil)
     @Published var preCallDiagnosisState: PreCallDiagnosisState?
+    @Published var showFallbackCallUI: Bool = false {
+        didSet {
+            NSLog("🟡 DEBUG: HomeViewModel.showFallbackCallUI changed to: %@", showFallbackCallUI ? "TRUE" : "FALSE")
+        }
+    }
+    @Published var currentCallUUID: UUID? {
+        didSet {
+            if let uuid = currentCallUUID {
+                NSLog("🟡 DEBUG: HomeViewModel.currentCallUUID set to: %@", uuid.uuidString)
+            } else {
+                NSLog("🟡 DEBUG: HomeViewModel.currentCallUUID set to: nil")
+            }
+        }
+    }
     
     // Connection timeout in seconds
     let connectionTimeout: TimeInterval = 30.0

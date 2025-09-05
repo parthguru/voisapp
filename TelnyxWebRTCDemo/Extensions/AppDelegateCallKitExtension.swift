@@ -541,6 +541,21 @@ extension AppDelegate : CXProviderDelegate {
             provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: Date())
             NSLog("🔥 CALLKIT OUTGOING: Reported outgoing call started connecting")
             
+            // 🔧 LOCK SCREEN FIX: Start background task to maintain CallKit UI when screen locks
+            self.startCallKitBackgroundTask()
+            
+            // 🔧 LOCK SCREEN UI FIX: Enhanced call state reporting for lock screen display
+            // Force CallKit to recognize this as a priority call that should show on lock screen
+            let callUpdate = CXCallUpdate()
+            callUpdate.localizedCallerName = "Connecting..."
+            callUpdate.hasVideo = false
+            callUpdate.supportsDTMF = true
+            callUpdate.supportsHolding = true
+            callUpdate.supportsGrouping = false
+            callUpdate.supportsUngrouping = false
+            provider.reportCall(with: action.callUUID, updated: callUpdate)
+            NSLog("🔧 LOCK SCREEN UI FIX: Reported enhanced call state to CallKit for lock screen display")
+            
             // Step 2: Background the app so CallKit can show system UI
             // This is the key to making outgoing calls show CallKit interface
             self.minimizeAppForCallKit()
@@ -565,6 +580,10 @@ extension AppDelegate : CXProviderDelegate {
                     }
                 } else {
                     NSLog("🔥 CALLKIT OUTGOING: Call creation FAILED - call object is nil")
+                    
+                    // 🔧 LOCK SCREEN FIX: End background task on call failure
+                    self.endCallKitBackgroundTask()
+                    
                     // Report call failed to CallKit
                     DispatchQueue.main.async {
                         provider.reportCall(with: action.callUUID, endedAt: Date(), reason: .failed)
@@ -635,6 +654,9 @@ extension AppDelegate : CXProviderDelegate {
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         print("AppDelegate:: END call action: callKitUUID [\(String(describing: self.callKitUUID))] action [\(action.callUUID)]")
+        
+        // 🔧 LOCK SCREEN FIX: End background task when call terminates
+        self.endCallKitBackgroundTask()
         
         // 🔥 PHASE 6: Broadcast call end event (with safety guards)
         do {

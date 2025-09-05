@@ -190,6 +190,9 @@ struct HomeView: View {
                       profileViewModel: profileViewModel,
                       isRegionSelectionDisabled: viewModel.isRegionSelectionDisabled
                   )
+                
+                // Note: WhatsApp-Style Fallback Call Interface now handled in MainTabView
+                // This HomeView is no longer used - kept for reference only
             }
             .background(Color(hex: "#FEFDF5")).ignoresSafeArea()
             .sheet(isPresented: $showPreCallDiagnosisSheet) {
@@ -369,6 +372,8 @@ struct HomeView_Previews: PreviewProvider {
         )
     }
 }
+
+// MARK: - SimpleCallView moved to MainTabView.swift to fix UI integration issue
 
 // MARK: - Refactoring Complete
 // 

@@ -584,36 +584,136 @@ extension HomeViewController {
     }
 
     func onEndCallButton() {
-        guard let uuid = appDelegate.currentCall?.callInfo?.callId else { return }
-        appDelegate.executeEndCallAction(uuid: uuid)
+        NSLog("🔥 BUTTON FIX: onEndCallButton called")
+        
+        // Check if we're in direct call mode (using fallback UI)
+        if viewModel.showFallbackCallUI {
+            NSLog("🔥 BUTTON FIX: Direct call mode - ending call directly")
+            // Direct call mode - end call directly through TelnyxRTC
+            if let currentCall = appDelegate.currentCall {
+                currentCall.hangup()
+                NSLog("✅ BUTTON FIX: Call hung up directly via TelnyxRTC")
+                
+                // Update UI state
+                DispatchQueue.main.async {
+                    self.viewModel.showFallbackCallUI = false
+                    self.viewModel.currentCallUUID = nil
+                    self.callViewModel.callState = .DONE(reason: nil)
+                    self.viewModel.callState = .DONE(reason: nil)
+                }
+            } else {
+                NSLog("❌ BUTTON FIX: No current call found for direct hangup")
+            }
+        } else {
+            NSLog("🔥 BUTTON FIX: CallKit mode - using executeEndCallAction")
+            // CallKit mode - use normal CallKit action
+            guard let uuid = appDelegate.currentCall?.callInfo?.callId else { 
+                NSLog("❌ BUTTON FIX: No call UUID for CallKit end action")
+                return 
+            }
+            appDelegate.executeEndCallAction(uuid: uuid)
+        }
     }
 
     func onMuteUnmuteSwitch(mute: Bool) {
-        guard let callId = appDelegate.currentCall?.callInfo?.callId else {
-            return
+        NSLog("🔥 BUTTON FIX: onMuteUnmuteSwitch called - mute: %@", mute ? "TRUE" : "FALSE")
+        
+        // Check if we're in direct call mode (using fallback UI)
+        if viewModel.showFallbackCallUI {
+            NSLog("🔥 BUTTON FIX: Direct call mode - muting directly")
+            // Direct call mode - mute directly through TelnyxRTC
+            if let currentCall = appDelegate.currentCall {
+                if mute {
+                    currentCall.muteAudio()
+                    NSLog("✅ BUTTON FIX: Audio muted directly via TelnyxRTC")
+                } else {
+                    currentCall.unmuteAudio()
+                    NSLog("✅ BUTTON FIX: Audio unmuted directly via TelnyxRTC")
+                }
+                
+                // Update UI state
+                DispatchQueue.main.async {
+                    self.callViewModel.isMuted = mute
+                }
+            } else {
+                NSLog("❌ BUTTON FIX: No current call found for direct mute")
+            }
+        } else {
+            NSLog("🔥 BUTTON FIX: CallKit mode - using executeMuteUnmuteAction")
+            // CallKit mode - use normal CallKit action
+            guard let callId = appDelegate.currentCall?.callInfo?.callId else {
+                NSLog("❌ BUTTON FIX: No call UUID for CallKit mute action")
+                return
+            }
+            appDelegate.executeMuteUnmuteAction(uuid: callId, mute: mute)
         }
-        appDelegate.executeMuteUnmuteAction(uuid: callId, mute: mute)
     }
 
     func onToggleSpeaker() {
-        if let isSpeakerEnabled = telnyxClient?.isSpeakerEnabled {
-            if isSpeakerEnabled {
-                telnyxClient?.setEarpiece()
-            } else {
-                telnyxClient?.setSpeaker()
-            }
+        NSLog("🔥 BUTTON FIX: onToggleSpeaker called")
+        
+        guard let telnyxClient = self.telnyxClient else {
+            NSLog("❌ BUTTON FIX: TelnyxClient is nil - cannot toggle speaker")
+            return
+        }
+        
+        let isSpeakerEnabled = telnyxClient.isSpeakerEnabled
+        NSLog("🔥 BUTTON FIX: Current speaker state: %@", isSpeakerEnabled ? "ON" : "OFF")
+        
+        if isSpeakerEnabled {
+            telnyxClient.setEarpiece()
+            NSLog("✅ BUTTON FIX: Switched to earpiece")
+        } else {
+            telnyxClient.setSpeaker()
+            NSLog("✅ BUTTON FIX: Switched to speaker")
+        }
 
-            DispatchQueue.main.async {
-                self.callViewModel.isSpeakerOn = self.telnyxClient?.isSpeakerEnabled ?? false
-            }
+        DispatchQueue.main.async {
+            self.callViewModel.isSpeakerOn = telnyxClient.isSpeakerEnabled
+            NSLog("✅ BUTTON FIX: Updated UI speaker state to: %@", self.callViewModel.isSpeakerOn ? "ON" : "OFF")
         }
     }
 
     func onHoldUnholdSwitch(isOnHold: Bool) {
-        if isOnHold {
-            appDelegate.currentCall?.hold()
+        NSLog("🔥 BUTTON FIX: onHoldUnholdSwitch called - hold: %@", isOnHold ? "TRUE" : "FALSE")
+        
+        guard let currentCall = appDelegate.currentCall else {
+            NSLog("❌ BUTTON FIX: No current call found for hold action")
+            return
+        }
+        
+        // Check if we're in direct call mode (using fallback UI)
+        if viewModel.showFallbackCallUI {
+            NSLog("🔥 BUTTON FIX: Direct call mode - hold/unhold directly")
+            // Direct call mode - hold directly through TelnyxRTC
+            if isOnHold {
+                currentCall.hold()
+                NSLog("✅ BUTTON FIX: Call held directly via TelnyxRTC")
+            } else {
+                currentCall.unhold()
+                NSLog("✅ BUTTON FIX: Call unheld directly via TelnyxRTC")
+            }
+            
+            // Update UI state
+            DispatchQueue.main.async {
+                self.callViewModel.isOnHold = isOnHold
+                // Update call state if needed
+                if isOnHold {
+                    self.callViewModel.callState = .HELD
+                    self.viewModel.callState = .HELD
+                } else {
+                    self.callViewModel.callState = .ACTIVE
+                    self.viewModel.callState = .ACTIVE
+                }
+            }
         } else {
-            appDelegate.currentCall?.unhold()
+            NSLog("🔥 BUTTON FIX: CallKit mode - hold/unhold normally")
+            // CallKit mode - use normal hold/unhold
+            if isOnHold {
+                currentCall.hold()
+            } else {
+                currentCall.unhold()
+            }
         }
     }
     
@@ -674,6 +774,10 @@ extension HomeViewController {
     func activateFallbackCallUI(callUUID: UUID, reason: FallbackActivationReason) {
         NSLog("🟡 DEBUG: *** activateFallbackCallUI CALLED *** UUID: %@, Reason: %@", callUUID.uuidString, reason.rawValue)
         NSLog("🔥 PHASE 6: HomeViewController activating fallback UI for %@ - reason: %@", callUUID.uuidString, reason.rawValue)
+        
+        // 🔥 CRITICAL AUDIO FIX: Configure audio session for direct VoIP calls
+        self.configureAudioSessionForDirectCall()
+        
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { 
                 NSLog("🔥 DEBUG: activateFallbackCallUI - self is nil")
@@ -689,6 +793,14 @@ extension HomeViewController {
             self.viewModel.currentCallUUID = callUUID
             NSLog("🔥 DEBUG: Set currentCallUUID = %@", callUUID.uuidString)
             
+            // 🔥 CRITICAL FIX: Ensure call state is properly tracked for UI buttons
+            if let currentCall = self.appDelegate.currentCall {
+                self.callViewModel.currentCall = currentCall
+                self.callViewModel.callState = currentCall.callState
+                self.viewModel.callState = currentCall.callState
+                NSLog("✅ BUTTON FIX: Updated call state for UI tracking")
+            }
+            
             NSLog("✅ PHASE 6: Fallback call interface activated - HomeView will show FallbackCallView")
         }
     }
@@ -696,6 +808,10 @@ extension HomeViewController {
     /// Dismiss the fallback call UI
     private func dismissFallbackCallUI() {
         NSLog("🔥 PHASE 6: Dismissing FallbackCallView")
+        
+        // 🔥 CRITICAL AUDIO FIX: Deactivate audio session when call ends
+        self.deactivateAudioSessionForDirectCall()
+        
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
@@ -713,6 +829,60 @@ extension HomeViewController {
         DispatchQueue.main.async { [weak self] in
             // Update UI to reflect audio route change
             // This could update speaker/headphone indicators, call controls, etc.
+        }
+    }
+    
+    // MARK: - Audio Session Management for Direct Calls
+    
+    /// Configure audio session for direct VoIP calls (bypassing CallKit)
+    private func configureAudioSessionForDirectCall() {
+        NSLog("🔥 AUDIO FIX: Configuring AVAudioSession for direct VoIP call")
+        
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            
+            // Set category to playAndRecord for two-way audio
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP])
+            NSLog("✅ AUDIO FIX: Audio category set to playAndRecord with voiceChat mode")
+            
+            // Activate the audio session
+            try audioSession.setActive(true)
+            NSLog("✅ AUDIO FIX: Audio session activated")
+            
+            // Enable TelnyxRTC audio session directly
+            if let telnyxClient = self.telnyxClient {
+                telnyxClient.enableAudioSession(audioSession: audioSession)
+                NSLog("✅ AUDIO FIX: TelnyxRTC audio session enabled successfully")
+            } else {
+                NSLog("❌ AUDIO FIX: TelnyxClient is nil - cannot enable audio session")
+            }
+            
+            NSLog("✅ AUDIO FIX: Audio session configured - category: %@, mode: %@", audioSession.category.rawValue, audioSession.mode.rawValue)
+            
+        } catch {
+            NSLog("❌ AUDIO FIX: Failed to configure audio session: %@", error.localizedDescription)
+        }
+    }
+    
+    /// Deactivate audio session for direct VoIP calls
+    private func deactivateAudioSessionForDirectCall() {
+        NSLog("🔥 AUDIO FIX: Deactivating AVAudioSession for direct VoIP call")
+        
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            
+            // Disable TelnyxRTC audio session
+            if let telnyxClient = self.telnyxClient {
+                telnyxClient.disableAudioSession(audioSession: audioSession)
+                NSLog("✅ AUDIO FIX: TelnyxRTC audio session disabled")
+            }
+            
+            // Deactivate the audio session
+            try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+            NSLog("✅ AUDIO FIX: Audio session deactivated successfully")
+            
+        } catch {
+            NSLog("❌ AUDIO FIX: Failed to deactivate audio session: %@", error.localizedDescription)
         }
     }
 }
